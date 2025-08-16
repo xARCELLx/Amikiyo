@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:ui';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
@@ -5,7 +6,6 @@ import '../home/widgets/bottom_nav_bar.dart';
 import '../../config/constants.dart';
 import '../../services/mock_data.dart';
 import '../home/widgets/post_card.dart';
-import 'edit_profile_modal.dart';
 import 'board_card.dart';
 import '../settings/settings_screen.dart';
 
@@ -19,7 +19,9 @@ class ProfileScreen extends StatefulWidget {
 class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<double> _fadeAnimation;
+  String _username = 'AnimeFan123';
   String _bio = 'Loves Demon Slayer, Naruto, and One Piece';
+  String _profileImage = 'https://picsum.photos/150/150?random=5';
   List<Map<String, dynamic>> _topThree = [
     {
       'id': '12191',
@@ -89,7 +91,6 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
     return 'Genin';
   }
 
-  // Deduplicate anime by id for the preview
   List<Map<String, dynamic>> _getUniqueAnime() {
     final allAnime = [..._topThree, ..._watched, ..._nextToWatch];
     final seenIds = <String>{};
@@ -106,12 +107,11 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
 
   @override
   Widget build(BuildContext context) {
-    final userPosts = getMockPosts().where((post) => post.username == 'AnimeFan123').toList();
+    final userPosts = getMockPosts().where((post) => post.username == _username).toList();
     final uniqueAnime = _getUniqueAnime();
     return Scaffold(
       body: Stack(
         children: [
-          // Gradient background
           Container(
             decoration: BoxDecoration(
               gradient: LinearGradient(
@@ -126,7 +126,6 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Header: PFP, Username, Settings
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                     child: Row(
@@ -136,14 +135,26 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                           radius: 40,
                           backgroundColor: Theme.of(context).colorScheme.primary,
                           child: ClipOval(
-                            child: CachedNetworkImage(
-                              imageUrl: 'https://picsum.photos/150/150?random=5',
+                            child: _profileImage.startsWith('http')
+                                ? CachedNetworkImage(
+                              imageUrl: _profileImage,
                               fit: BoxFit.cover,
                               placeholder: (context, url) => const CircularProgressIndicator(
                                 color: Color(0xFF00FF7F),
                               ),
                               errorWidget: (context, url, error) {
                                 debugPrint('Profile image failed: $url, error: $error');
+                                return Image.asset(
+                                  Constants.defaultProfilePath,
+                                  fit: BoxFit.cover,
+                                );
+                              },
+                            )
+                                : Image.file(
+                              File(_profileImage.isNotEmpty ? _profileImage : Constants.defaultProfilePath),
+                              fit: BoxFit.cover,
+                              errorBuilder: (context, error, stackTrace) {
+                                debugPrint('Local profile image failed: $error');
                                 return Image.asset(
                                   Constants.defaultProfilePath,
                                   fit: BoxFit.cover,
@@ -158,7 +169,7 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                'AnimeFan123',
+                                _username,
                                 style: Theme.of(context).textTheme.titleLarge?.copyWith(
                                   color: Colors.white,
                                   fontFamily: 'AnimeAce',
@@ -173,26 +184,12 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                                 ),
                               ),
                               const SizedBox(height: 4),
-                              GestureDetector(
-                                onTap: () async {
-                                  final result = await showModalBottomSheet<Map<String, dynamic>>(
-                                    context: context,
-                                    isScrollControlled: true,
-                                    builder: (context) => const EditProfileModal(),
-                                  );
-                                  if (result != null) {
-                                    setState(() {
-                                      _bio = result['bio'];
-                                    });
-                                  }
-                                },
-                                child: Text(
-                                  _bio,
-                                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                    color: Colors.white70,
-                                    fontFamily: 'AnimeAce',
-                                    fontWeight: FontWeight.w400,
-                                  ),
+                              Text(
+                                _bio,
+                                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                  color: Colors.white70,
+                                  fontFamily: 'AnimeAce',
+                                  fontWeight: FontWeight.w400,
                                 ),
                               ),
                             ],
@@ -200,18 +197,30 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                         ),
                         IconButton(
                           icon: const Icon(Icons.settings, color: Color(0xFF00FF7F)),
-                          onPressed: () {
-                            Navigator.push(
+                          onPressed: () async {
+                            final result = await Navigator.push(
                               context,
-                              MaterialPageRoute(builder: (context) => const SettingsScreen()),
+                              MaterialPageRoute(
+                                builder: (context) => SettingsScreen(
+                                  username: _username,
+                                  bio: _bio,
+                                  profileImage: _profileImage,
+                                ),
+                              ),
                             );
+                            if (result != null) {
+                              setState(() {
+                                _username = result['username'];
+                                _bio = result['bio'];
+                                _profileImage = result['profileImage'];
+                              });
+                            }
                           },
                         ),
                       ],
                     ),
                   ),
                   const SizedBox(height: 12),
-                  // Anime Board Preview
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     child: GestureDetector(
@@ -221,7 +230,6 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                           context: context,
                           builder: (context) => Stack(
                             children: [
-                              // Blur the background
                               BackdropFilter(
                                 filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
                                 child: Container(
@@ -246,7 +254,6 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                             _topThree = result['topThree'];
                             _watched = result['watched'];
                             _nextToWatch = result['nextToWatch'];
-                            // Ensure Top 3 Favorites are in Watched Anime
                             for (var anime in _topThree) {
                               if (!_watched.any((w) => w['id'] == anime['id'])) {
                                 _watched.add(anime);
@@ -350,7 +357,6 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                     ),
                   ),
                   const SizedBox(height: 12),
-                  // Rank
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     child: Container(
@@ -372,7 +378,6 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                     ),
                   ),
                   const SizedBox(height: 12),
-                  // Badges
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     child: Column(
@@ -416,7 +421,6 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                     ),
                   ),
                   const SizedBox(height: 12),
-                  // Stats (Posts, Followers, Following)
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     child: Container(
@@ -495,7 +499,6 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                     ),
                   ),
                   const SizedBox(height: 12),
-                  // Posts Grid
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     child: Column(

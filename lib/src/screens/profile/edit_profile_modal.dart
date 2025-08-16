@@ -1,235 +1,281 @@
 import 'dart:ui';
+import 'dart:io';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import '../../config/constants.dart';
-import '../../services/kitsu_api.dart';
+import 'image_edit_modal.dart';
 
 class EditProfileModal extends StatefulWidget {
-  const EditProfileModal({super.key});
+  final String initialUsername;
+  final String initialBio;
+  final String initialProfileImage;
+
+  const EditProfileModal({
+    super.key,
+    required this.initialUsername,
+    required this.initialBio,
+    required this.initialProfileImage,
+  });
 
   @override
   _EditProfileModalState createState() => _EditProfileModalState();
 }
 
 class _EditProfileModalState extends State<EditProfileModal> {
-  final TextEditingController _bioController = TextEditingController(
-    text: 'Loves Demon Slayer, Naruto, and One Piece',
-  );
-  final TextEditingController _searchController = TextEditingController();
-  final List<Map<String, dynamic>> _favorites = [
-    {
-      'title': 'Demon Slayer',
-      'thumbnail': 'https://media.kitsu.io/anime/poster_images/12191/medium.jpg',
-      'id': '12191',
-    },
-    {
-      'title': 'Naruto',
-      'thumbnail': 'https://media.kitsu.io/anime/poster_images/12/medium.jpg',
-      'id': '12',
-    },
-    {
-      'title': 'One Piece',
-      'thumbnail': 'https://media.kitsu.io/anime/poster_images/13/medium.jpg',
-      'id': '13',
-    },
-    {
-      'title': 'Attack on Titan',
-      'thumbnail': 'https://media.kitsu.io/anime/poster_images/7442/medium.jpg',
-      'id': '7442',
-    },
-  ];
-  List<Map<String, dynamic>> _searchResults = [];
+  late TextEditingController _usernameController;
+  late TextEditingController _bioController;
+  String _profileImage = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _usernameController = TextEditingController(text: widget.initialUsername);
+    _bioController = TextEditingController(text: widget.initialBio);
+    _profileImage = widget.initialProfileImage;
+  }
 
   @override
   void dispose() {
+    _usernameController.dispose();
     _bioController.dispose();
-    _searchController.dispose();
     super.dispose();
   }
 
-  void _searchAnime(String query) async {
-    if (query.isEmpty) {
-      setState(() {
-        _searchResults = [];
-      });
-      return;
+  Future<void> _pickImage() async {
+    final picker = ImagePicker();
+    final pickedFile = await picker.pickImage(
+      source: ImageSource.gallery,
+      maxWidth: 150,
+      maxHeight: 150,
+      imageQuality: 80,
+    );
+    if (pickedFile != null) {
+      final editedImagePath = await showModalBottomSheet<String>(
+        context: context,
+        isScrollControlled: true,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(6)),
+        ),
+        backgroundColor: Colors.transparent,
+        builder: (context) => Stack(
+          children: [
+            BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
+              child: Container(
+                color: Colors.black.withOpacity(0.5),
+              ),
+            ),
+            Align(
+              alignment: Alignment.bottomCenter,
+              child: ImageEditModal(imagePath: pickedFile.path),
+            ),
+          ],
+        ),
+      );
+      if (editedImagePath != null) {
+        setState(() {
+          _profileImage = editedImagePath;
+          debugPrint('Selected and edited profile image: $_profileImage');
+        });
+      }
     }
-    final results = await KitsuApi.searchAnime(query);
-    setState(() {
-      _searchResults = results;
-    });
-  }
-
-  void _addFavorite(Map<String, dynamic> anime) {
-    setState(() {
-      _favorites.add({
-        'title': anime['attributes']['titles']['en'] ?? anime['attributes']['titles']['en_jp'],
-        'thumbnail': anime['attributes']['posterImage']['medium'],
-        'id': anime['id'],
-      });
-      _searchController.clear();
-      _searchResults = [];
-    });
   }
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(16),
-      height: MediaQuery.of(context).size.height * 0.6,
+      height: MediaQuery.of(context).size.height * 0.8,
       decoration: BoxDecoration(
         color: Colors.white.withOpacity(0.1),
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(6)),
         border: Border.all(color: const Color(0xFF00FF7F), width: 1),
       ),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
-        child: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
+      child: SingleChildScrollView(
+        child: Column(
+          children: [
+            // Drag Handle
+            Container(
+              width: 40,
+              height: 4,
+              margin: const EdgeInsets.symmetric(vertical: 8),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.5),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            // Header
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: Text(
                 'Edit Profile',
-                style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  color: Colors.white,
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  color: const Color(0xFF00FF7F),
+                  fontFamily: 'AnimeAce',
+                  fontWeight: FontWeight.w600,
                 ),
               ),
-              const SizedBox(height: 16),
-              // Profile Picture
-              Center(
-                child: Stack(
-                  children: [
-                    CircleAvatar(
-                      radius: 50,
-                      backgroundColor: Theme.of(context).colorScheme.primary,
-                      child: ClipOval(
-                        child: CachedNetworkImage(
-                          imageUrl: 'https://picsum.photos/150/150?random=5',
-                          fit: BoxFit.cover,
-                          placeholder: (context, url) => const CircularProgressIndicator(),
-                          errorWidget: (context, url, error) {
-                            debugPrint('Profile image failed: $url, error: $error');
-                            return Image.asset(
-                              Constants.defaultProfilePath,
-                              fit: BoxFit.cover,
-                            );
-                          },
-                        ),
-                      ),
-                    ),
-                    Positioned(
-                      bottom: 0,
-                      right: 0,
-                      child: GestureDetector(
-                        onTap: () {}, // TODO: Implement image picker
-                        child: Container(
-                          padding: const EdgeInsets.all(4),
-                          decoration: const BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: Color(0xFF00FF7F),
-                          ),
-                          child: const Icon(Icons.camera_alt, size: 20, color: Colors.white),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 16),
-              // Bio
-              TextField(
-                controller: _bioController,
-                decoration: InputDecoration(
-                  hintText: 'Enter your bio',
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    borderSide: const BorderSide(color: Color(0xFF00FF7F)),
-                  ),
-                  hintStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: Colors.white70,
-                  ),
-                ),
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: Colors.white,
-                ),
-                maxLines: 3,
-              ),
-              const SizedBox(height: 16),
-              // Anime Search
-              TextField(
-                controller: _searchController,
-                decoration: InputDecoration(
-                  hintText: 'Search anime to add to favorites',
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    borderSide: const BorderSide(color: Color(0xFF00FF7F)),
-                  ),
-                  hintStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: Colors.white70,
-                  ),
-                ),
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: Colors.white,
-                ),
-                onChanged: _searchAnime,
-              ),
-              const SizedBox(height: 8),
-              // Search Results
-              _searchResults.isEmpty
-                  ? Container()
-                  : Container(
-                height: 150,
-                child: ListView.builder(
-                  itemCount: _searchResults.length,
-                  itemBuilder: (context, index) {
-                    final anime = _searchResults[index];
-                    return ListTile(
-                      leading: CachedNetworkImage(
-                        imageUrl: anime['attributes']['posterImage']['medium'],
-                        width: 50,
-                        height: 50,
+            ),
+            const Divider(color: Color(0xFF00FF7F), height: 1),
+            // Profile Picture
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                children: [
+                  CircleAvatar(
+                    radius: 50,
+                    backgroundColor: Theme.of(context).colorScheme.primary,
+                    child: ClipOval(
+                      child: _profileImage.startsWith('http')
+                          ? CachedNetworkImage(
+                        imageUrl: _profileImage,
                         fit: BoxFit.cover,
-                        placeholder: (context, url) => const CircularProgressIndicator(),
-                        errorWidget: (context, url, error) => Image.asset(
-                          Constants.placeholderImagePath,
-                          width: 50,
-                          height: 50,
-                          fit: BoxFit.cover,
+                        placeholder: (context, url) => const CircularProgressIndicator(
+                          color: Color(0xFF00FF7F),
                         ),
+                        errorWidget: (context, url, error) {
+                          debugPrint('Profile image failed: $url, error: $error');
+                          return Image.asset(
+                            Constants.defaultProfilePath,
+                            fit: BoxFit.cover,
+                          );
+                        },
+                      )
+                          : Image.file(
+                        File(_profileImage.isNotEmpty ? _profileImage : Constants.defaultProfilePath),
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) {
+                          debugPrint('Local profile image failed: $error');
+                          return Image.asset(
+                            Constants.defaultProfilePath,
+                            fit: BoxFit.cover,
+                          );
+                        },
                       ),
-                      title: Text(
-                        anime['attributes']['titles']['en'] ?? anime['attributes']['titles']['en_jp'],
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: Colors.white,
-                        ),
-                      ),
-                      onTap: () => _addFavorite(anime),
-                    );
-                  },
-                ),
-              ),
-              const SizedBox(height: 16),
-              // Save Button
-              Center(
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF00FF7F),
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
                     ),
                   ),
-                  onPressed: () {
-                    Navigator.pop(context, {
-                      'bio': _bioController.text,
-                      'favorites': _favorites,
-                    });
-                  },
-                  child: const Text('Save'),
+                  const SizedBox(height: 8),
+                  ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF00FF7F),
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    ),
+                    onPressed: _pickImage,
+                    child: const Text(
+                      'Change Profile Picture',
+                      style: TextStyle(fontFamily: 'AnimeAce', fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            // Username
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              child: TextField(
+                controller: _usernameController,
+                decoration: InputDecoration(
+                  labelText: 'Username',
+                  labelStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: Colors.white70,
+                    fontFamily: 'AnimeAce',
+                    fontWeight: FontWeight.w400,
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(6),
+                    borderSide: const BorderSide(color: Color(0xFF00FF7F)),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(6),
+                    borderSide: const BorderSide(color: Color(0xFF00FF7F), width: 2),
+                  ),
+                ),
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: Colors.white,
+                  fontFamily: 'AnimeAce',
+                  fontWeight: FontWeight.w400,
                 ),
               ),
-            ],
-          ),
+            ),
+            // Bio
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              child: TextField(
+                controller: _bioController,
+                maxLines: 3,
+                decoration: InputDecoration(
+                  labelText: 'Bio',
+                  labelStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: Colors.white70,
+                    fontFamily: 'AnimeAce',
+                    fontWeight: FontWeight.w400,
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(6),
+                    borderSide: const BorderSide(color: Color(0xFF00FF7F)),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(6),
+                    borderSide: const BorderSide(color: Color(0xFF00FF7F), width: 2),
+                  ),
+                ),
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: Colors.white,
+                  fontFamily: 'AnimeAce',
+                  fontWeight: FontWeight.w400,
+                ),
+              ),
+            ),
+            // Save and Cancel Buttons
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF00FF7F),
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    ),
+                    onPressed: () {
+                      Navigator.pop(context, {
+                        'username': _usernameController.text,
+                        'bio': _bioController.text,
+                        'profileImage': _profileImage,
+                      });
+                    },
+                    child: const Text(
+                      'Save',
+                      style: TextStyle(fontFamily: 'AnimeAce', fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                  OutlinedButton(
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.white,
+                      side: const BorderSide(color: Color(0xFF00FF7F)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    ),
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text(
+                      'Cancel',
+                      style: TextStyle(fontFamily: 'AnimeAce', fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );
