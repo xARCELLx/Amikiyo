@@ -8,6 +8,7 @@ import '../../services/mock_data.dart';
 import '../home/widgets/post_card.dart';
 import 'board_card.dart';
 import '../settings/settings_screen.dart';
+import 'edit_profile_modal.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -62,9 +63,10 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
     },
   ];
   List<Map<String, dynamic>> _nextToWatch = [];
-  final int _postsCount = 15;
-  final int _followersCount = 420;
-  final int _followingCount = 180;
+  final int _postsCount = 0; // Set to 0, no dummy data
+  final int _followersCount = 0; // Set to 0, no dummy data
+  final int _followingCount = 0; // Set to 0, no dummy data
+  final List<String> _posts = []; // Empty posts list
 
   @override
   void initState() {
@@ -105,9 +107,155 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
     return uniqueAnime;
   }
 
+  void _showFollowersModal() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(6)),
+      ),
+      backgroundColor: Colors.transparent,
+      builder: (context) => Stack(
+        children: [
+          BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
+            child: Container(color: Colors.black.withOpacity(0.5)),
+          ),
+          Align(
+            alignment: Alignment.bottomCenter,
+            child: Container(
+              height: MediaQuery.of(context).size.height * 0.5,
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.1),
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(6)),
+                border: Border.all(color: const Color(0xFF00FF7F), width: 1),
+              ),
+              child: Column(
+                children: [
+                  Container(
+                    width: 40,
+                    height: 4,
+                    margin: const EdgeInsets.symmetric(vertical: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.5),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Text(
+                      'Followers',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        color: const Color(0xFF00FF7F),
+                        fontFamily: 'AnimeAce',
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  const Divider(color: Color(0xFF00FF7F), height: 1),
+                  Expanded(
+                    child: Center(
+                      child: Text(
+                        'No followers yet',
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: Colors.white70,
+                          fontFamily: 'AnimeAce',
+                          fontWeight: FontWeight.w400,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showFollowingModal() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(6)),
+      ),
+      backgroundColor: Colors.transparent,
+      builder: (context) => Stack(
+        children: [
+          BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
+            child: Container(color: Colors.black.withOpacity(0.5)),
+          ),
+          Align(
+            alignment: Alignment.bottomCenter,
+            child: Container(
+              height: MediaQuery.of(context).size.height * 0.5,
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.1),
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(6)),
+                border: Border.all(color: const Color(0xFF00FF7F), width: 1),
+              ),
+              child: Column(
+                children: [
+                  Container(
+                    width: 40,
+                    height: 4,
+                    margin: const EdgeInsets.symmetric(vertical: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.5),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Text(
+                      'Following',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        color: const Color(0xFF00FF7F),
+                        fontFamily: 'AnimeAce',
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  const Divider(color: Color(0xFF00FF7F), height: 1),
+                  Expanded(
+                    child: Center(
+                      child: Text(
+                        'Not following anyone yet',
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: Colors.white70,
+                          fontFamily: 'AnimeAce',
+                          fontWeight: FontWeight.w400,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showFullPostView(int index) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => FullPostView(
+          postImage: _posts.isNotEmpty ? _posts[index] : Constants.placeholderImagePath,
+          heroTag: 'post_$index',
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final userPosts = getMockPosts().where((post) => post.username == _username).toList();
+    final userPosts = _posts; // Use empty _posts list
     final uniqueAnime = _getUniqueAnime();
     return Scaffold(
       body: Stack(
@@ -131,35 +279,38 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        CircleAvatar(
-                          radius: 40,
-                          backgroundColor: Theme.of(context).colorScheme.primary,
-                          child: ClipOval(
-                            child: _profileImage.startsWith('http')
-                                ? CachedNetworkImage(
-                              imageUrl: _profileImage,
-                              fit: BoxFit.cover,
-                              placeholder: (context, url) => const CircularProgressIndicator(
-                                color: Color(0xFF00FF7F),
+                        Hero(
+                          tag: 'profile_image',
+                          child: CircleAvatar(
+                            radius: 40,
+                            backgroundColor: Colors.transparent, // Removed border
+                            child: ClipOval(
+                              child: _profileImage.startsWith('http')
+                                  ? CachedNetworkImage(
+                                imageUrl: _profileImage,
+                                fit: BoxFit.cover,
+                                placeholder: (context, url) => const CircularProgressIndicator(
+                                  color: Color(0xFF00FF7F),
+                                ),
+                                errorWidget: (context, url, error) {
+                                  debugPrint('Profile image failed: $url, error: $error');
+                                  return Image.asset(
+                                    Constants.defaultProfilePath,
+                                    fit: BoxFit.cover,
+                                  );
+                                },
+                              )
+                                  : Image.file(
+                                File(_profileImage.isNotEmpty ? _profileImage : Constants.defaultProfilePath),
+                                fit: BoxFit.cover,
+                                errorBuilder: (context, error, stackTrace) {
+                                  debugPrint('Local profile image failed: $error');
+                                  return Image.asset(
+                                    Constants.defaultProfilePath,
+                                    fit: BoxFit.cover,
+                                  );
+                                },
                               ),
-                              errorWidget: (context, url, error) {
-                                debugPrint('Profile image failed: $url, error: $error');
-                                return Image.asset(
-                                  Constants.defaultProfilePath,
-                                  fit: BoxFit.cover,
-                                );
-                              },
-                            )
-                                : Image.file(
-                              File(_profileImage.isNotEmpty ? _profileImage : Constants.defaultProfilePath),
-                              fit: BoxFit.cover,
-                              errorBuilder: (context, error, stackTrace) {
-                                debugPrint('Local profile image failed: $error');
-                                return Image.asset(
-                                  Constants.defaultProfilePath,
-                                  fit: BoxFit.cover,
-                                );
-                              },
                             ),
                           ),
                         ),
@@ -185,7 +336,7 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                               ),
                               const SizedBox(height: 4),
                               Text(
-                                _bio,
+                                _bio.isEmpty ? 'No bio yet' : _bio,
                                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                                   color: Colors.white70,
                                   fontFamily: 'AnimeAce',
@@ -305,7 +456,8 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                                     : SingleChildScrollView(
                                   scrollDirection: Axis.horizontal,
                                   child: Row(
-                                    children: uniqueAnime.map((anime) => Padding(
+                                    children: uniqueAnime
+                                        .map((anime) => Padding(
                                       padding: const EdgeInsets.only(right: 8),
                                       child: Column(
                                         children: [
@@ -346,7 +498,8 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                                           ),
                                         ],
                                       ),
-                                    )).toList(),
+                                    ))
+                                        .toList(),
                                   ),
                                 ),
                               ],
@@ -414,7 +567,8 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                               backgroundColor: Colors.white.withOpacity(0.1),
                               side: const BorderSide(color: Color(0xFF00FF7F)),
                               padding: const EdgeInsets.symmetric(horizontal: 8),
-                            )).toList(),
+                            ))
+                                .toList(),
                           ),
                         ),
                       ],
@@ -454,45 +608,51 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                               ),
                             ],
                           ),
-                          Column(
-                            children: [
-                              Text(
-                                _followersCount.toString(),
-                                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                                  color: Colors.white,
-                                  fontFamily: 'AnimeAce',
-                                  fontWeight: FontWeight.w600,
+                          GestureDetector(
+                            onTap: _showFollowersModal,
+                            child: Column(
+                              children: [
+                                Text(
+                                  _followersCount.toString(),
+                                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                    color: Colors.white,
+                                    fontFamily: 'AnimeAce',
+                                    fontWeight: FontWeight.w600,
+                                  ),
                                 ),
-                              ),
-                              Text(
-                                'Followers',
-                                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                  color: Colors.white70,
-                                  fontFamily: 'AnimeAce',
-                                  fontWeight: FontWeight.w400,
+                                Text(
+                                  'Followers',
+                                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    color: Colors.white70,
+                                    fontFamily: 'AnimeAce',
+                                    fontWeight: FontWeight.w400,
+                                  ),
                                 ),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
-                          Column(
-                            children: [
-                              Text(
-                                _followingCount.toString(),
-                                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                                  color: Colors.white,
-                                  fontFamily: 'AnimeAce',
-                                  fontWeight: FontWeight.w600,
+                          GestureDetector(
+                            onTap: _showFollowingModal,
+                            child: Column(
+                              children: [
+                                Text(
+                                  _followingCount.toString(),
+                                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                    color: Colors.white,
+                                    fontFamily: 'AnimeAce',
+                                    fontWeight: FontWeight.w600,
+                                  ),
                                 ),
-                              ),
-                              Text(
-                                'Following',
-                                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                  color: Colors.white70,
-                                  fontFamily: 'AnimeAce',
-                                  fontWeight: FontWeight.w400,
+                                Text(
+                                  'Following',
+                                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    color: Colors.white70,
+                                    fontFamily: 'AnimeAce',
+                                    fontWeight: FontWeight.w400,
+                                  ),
                                 ),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
                         ],
                       ),
@@ -535,22 +695,25 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                           ),
                           itemCount: userPosts.length,
                           itemBuilder: (context, index) => GestureDetector(
-                            onTap: () {}, // TODO: Navigate to post details
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(6),
-                              child: CachedNetworkImage(
-                                imageUrl: userPosts[index].imageUrl ?? Constants.placeholderImagePath,
-                                fit: BoxFit.cover,
-                                placeholder: (context, url) => const CircularProgressIndicator(
-                                  color: Color(0xFF00FF7F),
+                            onTap: () => _showFullPostView(index),
+                            child: Hero(
+                              tag: 'post_$index',
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(6),
+                                child: CachedNetworkImage(
+                                  imageUrl: userPosts[index],
+                                  fit: BoxFit.cover,
+                                  placeholder: (context, url) => const CircularProgressIndicator(
+                                    color: Color(0xFF00FF7F),
+                                  ),
+                                  errorWidget: (context, url, error) {
+                                    debugPrint('Post image failed: $url, error: $error');
+                                    return Image.asset(
+                                      Constants.placeholderImagePath,
+                                      fit: BoxFit.cover,
+                                    );
+                                  },
                                 ),
-                                errorWidget: (context, url, error) {
-                                  debugPrint('Post image failed: $url, error: $error');
-                                  return Image.asset(
-                                    Constants.placeholderImagePath,
-                                    fit: BoxFit.cover,
-                                  );
-                                },
                               ),
                             ),
                           ),
@@ -566,6 +729,50 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
         ],
       ),
       bottomNavigationBar: BottomNavBar(currentIndex: 3),
+    );
+  }
+}
+
+class FullPostView extends StatelessWidget {
+  final String postImage;
+  final String heroTag;
+
+  const FullPostView({
+    super.key,
+    required this.postImage,
+    required this.heroTag,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Color(0xFF00FF7F)),
+          onPressed: () => Navigator.pop(context),
+        ),
+      ),
+      body: Center(
+        child: Hero(
+          tag: heroTag,
+          child: CachedNetworkImage(
+            imageUrl: postImage,
+            fit: BoxFit.contain,
+            placeholder: (context, url) => const CircularProgressIndicator(
+              color: Color(0xFF00FF7F),
+            ),
+            errorWidget: (context, url, error) {
+              debugPrint('Full post image failed: $url, error: $error');
+              return Image.asset(
+                Constants.placeholderImagePath,
+                fit: BoxFit.contain,
+              );
+            },
+          ),
+        ),
+      ),
     );
   }
 }

@@ -1,6 +1,7 @@
-import 'dart:ui';
 import 'dart:io';
+import 'dart:ui';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/foundation.dart'; // Added for compute
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../config/constants.dart';
@@ -42,15 +43,43 @@ class _EditProfileModalState extends State<EditProfileModal> {
     super.dispose();
   }
 
+  // Isolate function to validate image file
+  static Future<String> _validateImage(String path) async {
+    final file = File(path);
+    if (!await file.exists()) {
+      debugPrint('Image file does not exist: $path');
+      return '';
+    }
+    return path;
+  }
+
   Future<void> _pickImage() async {
-    final picker = ImagePicker();
-    final pickedFile = await picker.pickImage(
-      source: ImageSource.gallery,
-      maxWidth: 150,
-      maxHeight: 150,
-      imageQuality: 80,
-    );
-    if (pickedFile != null) {
+    try {
+      debugPrint('Opening gallery for image selection');
+      final picker = ImagePicker();
+      final pickedFile = await picker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 512,
+        maxHeight: 512,
+        imageQuality: 100,
+      );
+
+      if (pickedFile == null) {
+        debugPrint('Image selection canceled');
+        return;
+      }
+
+      // Validate file in isolate
+      final validatedPath = await compute(_validateImage, pickedFile.path);
+      if (validatedPath.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Invalid image file')),
+        );
+        return;
+      }
+
+      // Open ImageEditModal
+      debugPrint('Opening ImageEditModal with path: $validatedPath');
       final editedImagePath = await showModalBottomSheet<String>(
         context: context,
         isScrollControlled: true,
@@ -62,23 +91,29 @@ class _EditProfileModalState extends State<EditProfileModal> {
           children: [
             BackdropFilter(
               filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
-              child: Container(
-                color: Colors.black.withOpacity(0.5),
-              ),
+              child: Container(color: Colors.black.withOpacity(0.5)),
             ),
             Align(
               alignment: Alignment.bottomCenter,
-              child: ImageEditModal(imagePath: pickedFile.path),
+              child: ImageEditModal(imagePath: validatedPath),
             ),
           ],
         ),
       );
+
       if (editedImagePath != null) {
         setState(() {
           _profileImage = editedImagePath;
-          debugPrint('Selected and edited profile image: $_profileImage');
+          debugPrint('Edited image: $_profileImage');
         });
+      } else {
+        debugPrint('ImageEditModal canceled');
       }
+    } catch (e, stackTrace) {
+      debugPrint('Error in _pickImage: $e\nStackTrace: $stackTrace');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to pick image: $e')),
+      );
     }
   }
 
@@ -94,7 +129,6 @@ class _EditProfileModalState extends State<EditProfileModal> {
       child: SingleChildScrollView(
         child: Column(
           children: [
-            // Drag Handle
             Container(
               width: 40,
               height: 4,
@@ -104,7 +138,6 @@ class _EditProfileModalState extends State<EditProfileModal> {
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
-            // Header
             Padding(
               padding: const EdgeInsets.all(12),
               child: Text(
@@ -117,14 +150,13 @@ class _EditProfileModalState extends State<EditProfileModal> {
               ),
             ),
             const Divider(color: Color(0xFF00FF7F), height: 1),
-            // Profile Picture
             Padding(
               padding: const EdgeInsets.all(12),
               child: Column(
                 children: [
                   CircleAvatar(
                     radius: 50,
-                    backgroundColor: Theme.of(context).colorScheme.primary,
+                    backgroundColor: Colors.transparent,
                     child: ClipOval(
                       child: _profileImage.startsWith('http')
                           ? CachedNetworkImage(
@@ -162,7 +194,6 @@ class _EditProfileModalState extends State<EditProfileModal> {
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(6),
                       ),
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                     ),
                     onPressed: _pickImage,
                     child: const Text(
@@ -173,7 +204,6 @@ class _EditProfileModalState extends State<EditProfileModal> {
                 ],
               ),
             ),
-            // Username
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               child: TextField(
@@ -201,7 +231,6 @@ class _EditProfileModalState extends State<EditProfileModal> {
                 ),
               ),
             ),
-            // Bio
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               child: TextField(
@@ -230,7 +259,6 @@ class _EditProfileModalState extends State<EditProfileModal> {
                 ),
               ),
             ),
-            // Save and Cancel Buttons
             Padding(
               padding: const EdgeInsets.all(12),
               child: Row(
@@ -243,7 +271,6 @@ class _EditProfileModalState extends State<EditProfileModal> {
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(6),
                       ),
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                     ),
                     onPressed: () {
                       Navigator.pop(context, {
@@ -264,7 +291,6 @@ class _EditProfileModalState extends State<EditProfileModal> {
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(6),
                       ),
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                     ),
                     onPressed: () => Navigator.pop(context),
                     child: const Text(

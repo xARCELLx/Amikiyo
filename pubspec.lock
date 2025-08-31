@@ -191,7 +191,7 @@ packages:
     source: hosted
     version: "5.0.0"
   flutter_plugin_android_lifecycle:
-    dependency: transitive
+    dependency: "direct dev"
     description:
       name: flutter_plugin_android_lifecycle
       sha256: "6382ce712ff69b0f719640ce957559dde459e55ecd433c767e06d139ddf16cab"
@@ -216,14 +216,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "6.2.1"
-  hero_animation:
-    dependency: "direct dev"
-    description:
-      name: hero_animation
-      sha256: e862b27e3bddea486923922bd436cf52b9a28d1a35a342f150e91367647f3215
-      url: "https://pub.dev"
-    source: hosted
-    version: "1.1.4"
   html:
     dependency: transitive
     description:
@@ -425,7 +417,7 @@ packages:
     source: hosted
     version: "1.9.1"
   path_provider:
-    dependency: transitive
+    dependency: "direct dev"
     description:
       name: path_provider
       sha256: "50c5dd5b6e1aaf6fb3a78b33f6aa3afca52bf903a8a5298f53101fdaee55bbcd"
@@ -534,7 +526,7 @@ packages:
     source: hosted
     version: "7.0.0"
   sqflite:
-    dependency: transitive
+    dependency: "direct dev"
     description:
       name: sqflite
       sha256: e2297b1da52f127bc7a3da11439985d9b536f75070f3325e62ada69a5c585d03
