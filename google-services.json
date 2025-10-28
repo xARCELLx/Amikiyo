@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "509709123125",
+    "project_id": "amikiyo-6edab",
+    "storage_bucket": "amikiyo-6edab.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:509709123125:android:51c40d438f953c1d5bbb7c",
+        "android_client_info": {
+          "package_name": "com.example.amikiyo"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDIPPFqVK0TnPlPSEswc-qHj7ATJJP_SLw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
