@@ -16,19 +16,37 @@ class _AuthScreenState extends State<AuthScreen> {
   bool _isLogin = true;
 
   Future<void> _authUser() async {
+    setState(() => _statusText = 'Processing...');
+
     String? token;
     if (_isLogin) {
-      token = await _authService.login(_emailController.text, _passwordController.text);
+      token = await _authService.login(
+        _emailController.text,
+        _passwordController.text,  // ← .text, not .password
+      );
     } else {
-      token = await _authService.signUp(_emailController.text, _passwordController.text, _usernameController.text);
+      token = await _authService.signUp(
+        _emailController.text,
+        _passwordController.text,  // ← .text, not .password
+        _usernameController.text,
+      );
     }
+
     if (token != null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Auth successful')));
+      setState(() => _statusText = 'Success! Redirecting...');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Auth successful')),
+      );
       Navigator.pushReplacementNamed(context, '/profile');
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Auth failed')));
+      setState(() => _statusText = 'Failed. Check console.');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Auth failed')),
+      );
     }
   }
+
+  String _statusText = '';
 
   @override
   Widget build(BuildContext context) {
@@ -64,6 +82,11 @@ class _AuthScreenState extends State<AuthScreen> {
               ),
               obscureText: true,
             ),
+            const SizedBox(height: 10),
+            Text(
+              _statusText,
+              style: const TextStyle(color: Colors.red, fontSize: 12),
+            ),
             const SizedBox(height: 20),
             ElevatedButton(
               onPressed: _authUser,
@@ -75,7 +98,7 @@ class _AuthScreenState extends State<AuthScreen> {
             TextButton(
               onPressed: () => setState(() => _isLogin = !_isLogin),
               child: Text(
-                _isLogin ? 'Create Account' : 'Have an account? Login',
+                _isLogin ? 'Create Account' : 'Have an Account? Login',
                 style: const TextStyle(color: Color(0xFF00FF7F), fontFamily: 'AnimeAce'),
               ),
             ),

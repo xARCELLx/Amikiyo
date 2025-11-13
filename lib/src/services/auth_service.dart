@@ -4,35 +4,48 @@ import 'package:http/http.dart' as http;
 
 class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
-  final String _apiBaseUrl = 'http:// 10.102.14.156:8000/api'; // For Android emulator; change to Heroku URL later
+  final String _apiBaseUrl = 'http://10.183.86.156:8000/api'; // For Android emulator; change to Heroku URL later
 
   // Sign up with email/password and create profile in Django
   Future<String?> signUp(String email, String password, String username) async {
     try {
+      print('🔐 Starting sign-up for $email');
       UserCredential userCredential = await _auth.createUserWithEmailAndPassword(
         email: email,
         password: password,
       );
       String? idToken = await userCredential.user?.getIdToken();
+      print('✅ Firebase sign-up success. ID Token length: ${idToken?.length}');
+
       if (idToken != null) {
+        print('📡 Sending to Django: $_apiBaseUrl/users/');
+        print('📦 Body: ${jsonEncode({'username': username})}');
+        print('🔑 Header: Bearer ${idToken.substring(0, 20)}...');
+
         final response = await http.post(
-          Uri.parse('$_apiBaseUrl/users/'), // Fixed: Added slash before 'users/'
+          Uri.parse('$_apiBaseUrl/users/'),
           headers: {
             'Authorization': 'Bearer $idToken',
             'Content-Type': 'application/json',
           },
           body: jsonEncode({'username': username}),
         );
+
+        print('📥 Django Response Status: ${response.statusCode}');
+        print('📥 Django Response Body: ${response.body}');
+
         if (response.statusCode == 201 || response.statusCode == 200) {
-          print('Profile created: ${response.body}');
-          return idToken; // Return JWT for storage
+          print('✅ Profile created!');
+          return idToken;
         } else {
-          print('Profile creation failed: ${response.statusCode} - ${response.body}');
+          print('❌ Profile creation failed: ${response.statusCode} - ${response.body}');
         }
+      } else {
+        print('❌ No ID token received from Firebase');
       }
       return null;
     } catch (e) {
-      print('Sign-up error: $e');
+      print('💥 Sign-up error: $e');
       return null;
     }
   }
@@ -40,17 +53,20 @@ class AuthService {
   // Login with email/password
   Future<String?> login(String email, String password) async {
     try {
+      print('🔐 Starting login for $email');
       UserCredential userCredential = await _auth.signInWithEmailAndPassword(
         email: email,
         password: password,
       );
       String? idToken = await userCredential.user?.getIdToken();
       if (idToken != null) {
-        print('Login successful, ID token: $idToken');
+        print('✅ Login success. ID Token length: ${idToken.length}');
+      } else {
+        print('❌ No ID token for login');
       }
       return idToken;
     } catch (e) {
-      print('Login error: $e');
+      print('💥 Login error: $e');
       return null;
     }
   }
