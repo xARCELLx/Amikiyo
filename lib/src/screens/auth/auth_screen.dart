@@ -5,48 +5,67 @@ class AuthScreen extends StatefulWidget {
   const AuthScreen({super.key});
 
   @override
-  _AuthScreenState createState() => _AuthScreenState();
+  State<AuthScreen> createState() => _AuthScreenState();
 }
 
 class _AuthScreenState extends State<AuthScreen> {
   final AuthService _authService = AuthService();
+
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   final TextEditingController _usernameController = TextEditingController();
+
   bool _isLogin = true;
+  String _statusText = '';
 
   Future<void> _authUser() async {
     setState(() => _statusText = 'Processing...');
 
-    String? token;
-    if (_isLogin) {
-      token = await _authService.login(
-        _emailController.text,
-        _passwordController.text,  // ← .text, not .password
-      );
-    } else {
-      token = await _authService.signUp(
-        _emailController.text,
-        _passwordController.text,  // ← .text, not .password
-        _usernameController.text,
-      );
+    final email = _emailController.text.trim();
+    final password = _passwordController.text;
+    final username = _usernameController.text.trim();
+
+    if (email.isEmpty || password.isEmpty || (!_isLogin && username.isEmpty)) {
+      setState(() => _statusText = 'Please fill all fields');
+      return;
     }
 
-    if (token != null) {
-      setState(() => _statusText = 'Success! Redirecting...');
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Auth successful')),
-      );
-      Navigator.pushReplacementNamed(context, '/profile');
-    } else {
-      setState(() => _statusText = 'Failed. Check console.');
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Auth failed')),
-      );
+    String? token;
+
+    try {
+      if (_isLogin) {
+        token = await _authService.login(
+          email: email,
+          password: password,
+        );
+      } else {
+        token = await _authService.signUp(
+          email: email,
+          password: password,
+          username: username,
+        );
+      }
+
+      if (token != null) {
+        setState(() => _statusText = 'Success! Redirecting...');
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Auth successful')),
+        );
+
+        // Navigate to ProfileScreen
+        if (mounted) {
+          Navigator.pushReplacementNamed(context, '/profile');
+        }
+      } else {
+        setState(() => _statusText = 'Failed. Check console.');
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Auth failed')),
+        );
+      }
+    } catch (e) {
+      setState(() => _statusText = 'Error: $e');
     }
   }
-
-  String _statusText = '';
 
   @override
   Widget build(BuildContext context) {
@@ -73,6 +92,7 @@ class _AuthScreenState extends State<AuthScreen> {
                 labelText: 'Email',
                 labelStyle: TextStyle(fontFamily: 'AnimeAce'),
               ),
+              keyboardType: TextInputType.emailAddress,
             ),
             TextField(
               controller: _passwordController,
@@ -85,26 +105,42 @@ class _AuthScreenState extends State<AuthScreen> {
             const SizedBox(height: 10),
             Text(
               _statusText,
-              style: const TextStyle(color: Colors.red, fontSize: 12),
+              style: const TextStyle(color: Colors.red, fontSize: 14),
             ),
             const SizedBox(height: 20),
             ElevatedButton(
               onPressed: _authUser,
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF00FF7F),
+                padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 15),
               ),
-              child: Text(_isLogin ? 'Login' : 'Sign Up', style: const TextStyle(fontFamily: 'AnimeAce')),
+              child: Text(
+                _isLogin ? 'Login' : 'Sign Up',
+                style: const TextStyle(fontFamily: 'AnimeAce', fontSize: 16),
+              ),
             ),
             TextButton(
               onPressed: () => setState(() => _isLogin = !_isLogin),
               child: Text(
                 _isLogin ? 'Create Account' : 'Have an Account? Login',
-                style: const TextStyle(color: Color(0xFF00FF7F), fontFamily: 'AnimeAce'),
+                style: const TextStyle(
+                  color: Color(0xFF00FF7F),
+                  fontFamily: 'AnimeAce',
+                  fontSize: 14,
+                ),
               ),
             ),
           ],
         ),
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    _usernameController.dispose();
+    super.dispose();
   }
 }

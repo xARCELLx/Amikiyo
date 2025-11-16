@@ -2,33 +2,40 @@
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'storage_service.dart';
+import 'constants.dart';
 
 class ApiService {
-  static const String _baseUrl = 'http://192.168.43.1:8000/api'; // YOUR LAPTOP IP
+  static const String baseUrl = ApiConstants.baseUrl; // YOUR LAPTOP IP
 
   static Future<Map<String, dynamic>?> getMyProfile() async {
     final token = await StorageService.getToken();
-    if (token == null) return null;
+    if (token == null) {
+      print("No DRF token found in storage!");
+      return null;
+    }
 
     try {
       final response = await http.get(
-        Uri.parse('$_baseUrl/profiles/me/'),
+        Uri.parse('$baseUrl/profiles/me/'),
         headers: {
           'Authorization': 'Token $token',
           'Content-Type': 'application/json',
         },
       );
 
+      print("Profile API → Status: ${response.statusCode}");
+      print("Profile API → Body: ${response.body}");
+
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         await StorageService.saveProfile(data);
         return data;
       } else {
-        print('API Error: ${response.statusCode} ${response.body}');
+        print("Failed to load profile: ${response.statusCode}");
         return null;
       }
     } catch (e) {
-      print('Network error: $e');
+      print("Network error: $e");
       return null;
     }
   }
