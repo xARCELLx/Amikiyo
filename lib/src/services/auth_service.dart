@@ -56,7 +56,9 @@ class AuthService {
         // SAVE THE DRF TOKEN — this is what ProfileScreen needs!
         final String drfToken = data['token'] as String;
         await StorageService.saveToken(drfToken);
+        print('SAVING TOKEN IN AUTH SERVICE: $drfToken');
         await StorageService.saveProfile(data);
+
 
         print('Profile + User created in Django!');
         print('DRF Token saved: $drfToken');
@@ -111,6 +113,7 @@ class AuthService {
         final data = jsonDecode(response.body);
         final String drfToken = data['token'] as String;
         await StorageService.saveToken(drfToken);
+        print('SAVING TOKEN IN AUTH SERVICE: $drfToken');
         await StorageService.saveProfile(data);
         print('Django sync successful on login');
       }

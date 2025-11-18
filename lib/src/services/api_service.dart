@@ -9,6 +9,8 @@ class ApiService {
 
   static Future<Map<String, dynamic>?> getMyProfile() async {
     final token = await StorageService.getToken();
+    print('TRYING TO LOAD TOKEN BEFORE PROFILE FETCH: $token');
+    print("Fetching profile with token: ${token?.substring(0, 10)}...");
     if (token == null) {
       print("No DRF token found in storage!");
       return null;
@@ -22,6 +24,9 @@ class ApiService {
           'Content-Type': 'application/json',
         },
       );
+      print("Response URL: $baseUrl/profiles/me/"); // ← ADD
+      print("Response Status: ${response.statusCode}"); // ← ADD
+      print("Response Body: ${response.body}"); // ← ADD
 
       print("Profile API → Status: ${response.statusCode}");
       print("Profile API → Body: ${response.body}");
