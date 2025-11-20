@@ -1,3 +1,4 @@
+// lib/src/screens/settings/settings_screen.dart
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../profile/edit_profile_modal.dart';
@@ -17,6 +18,7 @@ class SettingsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      extendBodyBehindAppBar: true,
       appBar: AppBar(
         title: Text(
           'Settings',
@@ -28,19 +30,23 @@ class SettingsScreen extends StatelessWidget {
         ),
         backgroundColor: Colors.transparent,
         elevation: 0,
+        iconTheme: const IconThemeData(color: Color(0xFF00FF7F)),
       ),
       body: Container(
-        decoration: BoxDecoration(
+        decoration: const BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: [const Color(0xFF1E1E1E), const Color(0xFF1A237E).withOpacity(0.8)],
+            colors: [
+              Color(0xFF1E1E1E),
+              Color(0xFF1A237E),
+            ],
           ),
         ),
         child: ListView(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.only(top: 100, left: 16, right: 16, bottom: 20),
           children: [
-            // Edit Profile Option
+            // EDIT PROFILE → NOW REFRESHES PROFILE SCREEN
             ListTile(
               leading: const Icon(Icons.edit, color: Color(0xFF00FF7F)),
               title: Text(
@@ -51,21 +57,19 @@ class SettingsScreen extends StatelessWidget {
                   fontWeight: FontWeight.w600,
                 ),
               ),
+              trailing: const Icon(Icons.arrow_forward_ios, color: Color(0xFF00FF7F), size: 16),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              tileColor: Colors.white.withOpacity(0.05),
               onTap: () async {
                 final result = await showModalBottomSheet<Map<String, dynamic>>(
                   context: context,
                   isScrollControlled: true,
-                  shape: const RoundedRectangleBorder(
-                    borderRadius: BorderRadius.vertical(top: Radius.circular(6)),
-                  ),
                   backgroundColor: Colors.transparent,
                   builder: (context) => Stack(
                     children: [
                       BackdropFilter(
                         filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
-                        child: Container(
-                          color: Colors.black.withOpacity(0.5),
-                        ),
+                        child: Container(color: Colors.black.withOpacity(0.5)),
                       ),
                       Align(
                         alignment: Alignment.bottomCenter,
@@ -78,58 +82,66 @@ class SettingsScreen extends StatelessWidget {
                     ],
                   ),
                 );
-                if (result != null) {
-                  Navigator.pop(context, result);
+
+                // THIS IS THE KEY: Tell ProfileScreen to refresh
+                if (result != null && result['saved'] == true) {
+                  Navigator.pop(context, true); // ← Triggers _loadEverything() in ProfileScreen
                 }
               },
             ),
-            const Divider(color: Color(0xFF00FF7F), height: 1),
-            // Other Settings Options (Placeholder)
+            const SizedBox(height: 8),
+
+            const Divider(color: Color(0xFF00FF7F), height: 1, thickness: 0.5),
+
+            // Future settings (you can expand later)
             ListTile(
               leading: const Icon(Icons.notifications, color: Color(0xFF00FF7F)),
-              title: Text(
-                'Notifications',
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  color: Colors.white,
-                  fontFamily: 'AnimeAce',
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
+              title: Text('Notifications', style: _tileTitleStyle(context)),
+              tileColor: Colors.white.withOpacity(0.05),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
               onTap: () {
-                // TODO: Implement notifications settings
+                // TODO: Notifications settings
               },
             ),
+            const SizedBox(height: 8),
+
             ListTile(
               leading: const Icon(Icons.lock, color: Color(0xFF00FF7F)),
-              title: Text(
-                'Privacy',
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  color: Colors.white,
-                  fontFamily: 'AnimeAce',
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
+              title: Text('Privacy', style: _tileTitleStyle(context)),
+              tileColor: Colors.white.withOpacity(0.05),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
               onTap: () {
-                // TODO: Implement privacy settings
+                // TODO: Privacy settings
               },
             ),
+            const SizedBox(height: 8),
+
             ListTile(
-              leading: const Icon(Icons.logout, color: Color(0xFF00FF7F)),
+              leading: const Icon(Icons.logout, color: Colors.redAccent),
               title: Text(
                 'Log Out',
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  color: Colors.white,
-                  fontFamily: 'AnimeAce',
-                  fontWeight: FontWeight.w600,
-                ),
+                style: _tileTitleStyle(context).copyWith(color: Colors.redAccent),
               ),
+              tileColor: Colors.white.withOpacity(0.05),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
               onTap: () {
-                // TODO: Implement log out
+                // TODO: Implement logout
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Logged out'), backgroundColor: Colors.red),
+                );
               },
             ),
           ],
         ),
       ),
+    );
+  }
+
+  TextStyle _tileTitleStyle(BuildContext context) {
+    return Theme.of(context).textTheme.titleMedium!.copyWith(
+      color: Colors.white,
+      fontFamily: 'AnimeAce',
+      fontWeight: FontWeight.w600,
     );
   }
 }

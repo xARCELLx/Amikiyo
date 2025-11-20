@@ -1,5 +1,5 @@
 // lib/src/services/constants.dart
 class ApiConstants {
   // CHANGE ONLY THIS LINE when hotspot restarts
-  static const String baseUrl = 'http://172.31.52.156:8000/api'; // ← your current IP
+  static const String baseUrl = 'http://172.27.228.156:8000/api'; // ← your current IP
 }
