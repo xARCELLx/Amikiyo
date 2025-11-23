@@ -270,7 +270,7 @@ class _ProfileScreenState extends State<ProfileScreen>
                                 ),
                               );
                               if (result == true) {
-                                await _loadEverything(); // INSTANT REFRESH
+                                await _loadEverything();
                               }
                             },
                           ),
@@ -278,7 +278,7 @@ class _ProfileScreenState extends State<ProfileScreen>
                       ),
                     ),
 
-                    // ANIME BOARD
+                    // ANIME BOARD — FIXED SAVE LOGIC
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 16),
                       child: GestureDetector(
@@ -303,23 +303,36 @@ class _ProfileScreenState extends State<ProfileScreen>
                           if (result != null) {
                             try {
                               final token = await StorageService.getToken();
+
+                              // THIS IS THE ONLY CHANGE — NOW SAVES ALL 3 SECTIONS
                               final response = await http.patch(
                                 Uri.parse('${ApiConstants.baseUrl}/profiles/me/'),
                                 headers: {
                                   'Authorization': 'Token $token',
                                   'Content-Type': 'application/json',
                                 },
-                                body: jsonEncode({'anime_board': result}),
+                                body: jsonEncode({
+                                  'anime_board': {
+                                    'top_three': result['topThree'] ?? [],
+                                    'watched': result['watched'] ?? [],
+                                    'next_to_watch': result['nextToWatch'] ?? [],
+                                  }
+                                }),
                               );
 
                               if (response.statusCode == 200) {
-                                await _loadEverything(); // INSTANT UPDATE
+                                await _loadEverything();
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('Anime Board Saved!'), backgroundColor: Color(0xFF00FF7F)),
+                                );
                               } else {
+                                debugPrint('Save failed: ${response.body}');
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   const SnackBar(content: Text('Failed to save board'), backgroundColor: Colors.red),
                                 );
                               }
                             } catch (e) {
+                              debugPrint('Network error: $e');
                               ScaffoldMessenger.of(context).showSnackBar(
                                 const SnackBar(content: Text('Network error'), backgroundColor: Colors.red),
                               );

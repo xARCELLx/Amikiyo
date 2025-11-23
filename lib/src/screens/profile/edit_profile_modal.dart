@@ -1,11 +1,15 @@
+// lib/src/screens/profile/edit_profile_modal.dart
 import 'dart:io';
 import 'dart:ui';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:flutter/foundation.dart'; // Added for compute
+import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../config/constants.dart';
+import '../../services/storage_service.dart';
 import 'image_edit_modal.dart';
+import '../../services/constants.dart';
 
 class EditProfileModal extends StatefulWidget {
   final String initialUsername;
@@ -27,6 +31,7 @@ class _EditProfileModalState extends State<EditProfileModal> {
   late TextEditingController _usernameController;
   late TextEditingController _bioController;
   String _profileImage = '';
+  bool _isSaving = false;
 
   @override
   void initState() {
@@ -43,7 +48,7 @@ class _EditProfileModalState extends State<EditProfileModal> {
     super.dispose();
   }
 
-  // Isolate function to validate image file
+  // Your existing isolate validation (kept 100%)
   static Future<String> _validateImage(String path) async {
     final file = File(path);
     if (!await file.exists()) {
@@ -69,7 +74,6 @@ class _EditProfileModalState extends State<EditProfileModal> {
         return;
       }
 
-      // Validate file in isolate
       final validatedPath = await compute(_validateImage, pickedFile.path);
       if (validatedPath.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -78,8 +82,6 @@ class _EditProfileModalState extends State<EditProfileModal> {
         return;
       }
 
-      // Open ImageEditModal
-      debugPrint('Opening ImageEditModal with path: $validatedPath');
       final editedImagePath = await showModalBottomSheet<String>(
         context: context,
         isScrollControlled: true,
@@ -101,19 +103,71 @@ class _EditProfileModalState extends State<EditProfileModal> {
         ),
       );
 
-      if (editedImagePath != null) {
+      if (editedImagePath != null && editedImagePath.isNotEmpty) {
         setState(() {
           _profileImage = editedImagePath;
-          debugPrint('Edited image: $_profileImage');
+          debugPrint('Edited image set: $_profileImage');
         });
-      } else {
-        debugPrint('ImageEditModal canceled');
       }
     } catch (e, stackTrace) {
-      debugPrint('Error in _pickImage: $e\nStackTrace: $stackTrace');
+      debugPrint('Error in _pickImage: $e\n$stackTrace');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Failed to pick image: $e')),
       );
+    }
+  }
+
+  // THE REAL SAVE FUNCTION — UPLOADS TO DJANGO
+  Future<void> _saveToServer() async {
+    if (_isSaving) return;
+    setState(() => _isSaving = true);
+
+    try {
+      final token = await StorageService.getToken();
+      if (token == null) throw Exception("No auth token found");
+
+      final dio = Dio();
+      dio.options.headers['Authorization'] = 'Token $token';
+
+      FormData formData = FormData();
+
+      // Text fields
+      formData.fields
+        ..add(MapEntry('username', _usernameController.text.trim()))
+        ..add(MapEntry('bio', _bioController.text.trim()));
+
+      // Upload image if changed
+      if (_profileImage.isNotEmpty && File(_profileImage).existsSync()) {
+        final fileName = _profileImage.split('/').last;
+        formData.files.add(MapEntry(
+          'profile_image',
+          await MultipartFile.fromFile(_profileImage, filename: fileName),
+        ));
+      }
+
+      final response = await dio.patch(
+        '${ApiConstants.baseUrl}/profiles/me/',
+        data: formData,
+      );
+
+      if (response.statusCode == 200) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Profile Updated Successfully!'),
+            backgroundColor: Color(0xFF00FF7F),
+          ),
+        );
+        Navigator.pop(context, {'saved': true}); // Triggers refresh in Settings → Profile
+      } else {
+        throw Exception('Server error: ${response.statusCode}');
+      }
+    } catch (e) {
+      debugPrint('Save failed: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to save: $e'), backgroundColor: Colors.red),
+      );
+    } finally {
+      setState(() => _isSaving = false);
     }
   }
 
@@ -129,6 +183,7 @@ class _EditProfileModalState extends State<EditProfileModal> {
       child: SingleChildScrollView(
         child: Column(
           children: [
+            // Handle bar
             Container(
               width: 40,
               height: 4,
@@ -138,6 +193,8 @@ class _EditProfileModalState extends State<EditProfileModal> {
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
+
+            // Title
             Padding(
               padding: const EdgeInsets.all(12),
               child: Text(
@@ -150,6 +207,8 @@ class _EditProfileModalState extends State<EditProfileModal> {
               ),
             ),
             const Divider(color: Color(0xFF00FF7F), height: 1),
+
+            // Profile Picture
             Padding(
               padding: const EdgeInsets.all(12),
               child: Column(
@@ -158,31 +217,19 @@ class _EditProfileModalState extends State<EditProfileModal> {
                     radius: 50,
                     backgroundColor: Colors.transparent,
                     child: ClipOval(
-                      child: _profileImage.startsWith('http')
+                      child: _profileImage.isEmpty
+                          ? Image.asset(Constants.defaultProfilePath, fit: BoxFit.cover)
+                          : _profileImage.startsWith('http')
                           ? CachedNetworkImage(
                         imageUrl: _profileImage,
                         fit: BoxFit.cover,
-                        placeholder: (context, url) => const CircularProgressIndicator(
-                          color: Color(0xFF00FF7F),
-                        ),
-                        errorWidget: (context, url, error) {
-                          debugPrint('Profile image failed: $url, error: $error');
-                          return Image.asset(
-                            Constants.defaultProfilePath,
-                            fit: BoxFit.cover,
-                          );
-                        },
+                        placeholder: (_, __) => const CircularProgressIndicator(color: Color(0xFF00FF7F)),
+                        errorWidget: (_, __, error) => Image.asset(Constants.defaultProfilePath, fit: BoxFit.cover),
                       )
                           : Image.file(
-                        File(_profileImage.isNotEmpty ? _profileImage : Constants.defaultProfilePath),
+                        File(_profileImage),
                         fit: BoxFit.cover,
-                        errorBuilder: (context, error, stackTrace) {
-                          debugPrint('Local profile image failed: $error');
-                          return Image.asset(
-                            Constants.defaultProfilePath,
-                            fit: BoxFit.cover,
-                          );
-                        },
+                        errorBuilder: (_, __, ___) => Image.asset(Constants.defaultProfilePath, fit: BoxFit.cover),
                       ),
                     ),
                   ),
@@ -191,9 +238,7 @@ class _EditProfileModalState extends State<EditProfileModal> {
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFF00FF7F),
                       foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(6),
-                      ),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
                     ),
                     onPressed: _pickImage,
                     child: const Text(
@@ -204,6 +249,8 @@ class _EditProfileModalState extends State<EditProfileModal> {
                 ],
               ),
             ),
+
+            // Username Field
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               child: TextField(
@@ -213,7 +260,6 @@ class _EditProfileModalState extends State<EditProfileModal> {
                   labelStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(
                     color: Colors.white70,
                     fontFamily: 'AnimeAce',
-                    fontWeight: FontWeight.w400,
                   ),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(6),
@@ -224,13 +270,11 @@ class _EditProfileModalState extends State<EditProfileModal> {
                     borderSide: const BorderSide(color: Color(0xFF00FF7F), width: 2),
                   ),
                 ),
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: Colors.white,
-                  fontFamily: 'AnimeAce',
-                  fontWeight: FontWeight.w400,
-                ),
+                style: const TextStyle(color: Colors.white, fontFamily: 'AnimeAce'),
               ),
             ),
+
+            // Bio Field
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               child: TextField(
@@ -241,7 +285,6 @@ class _EditProfileModalState extends State<EditProfileModal> {
                   labelStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(
                     color: Colors.white70,
                     fontFamily: 'AnimeAce',
-                    fontWeight: FontWeight.w400,
                   ),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(6),
@@ -252,13 +295,11 @@ class _EditProfileModalState extends State<EditProfileModal> {
                     borderSide: const BorderSide(color: Color(0xFF00FF7F), width: 2),
                   ),
                 ),
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: Colors.white,
-                  fontFamily: 'AnimeAce',
-                  fontWeight: FontWeight.w400,
-                ),
+                style: const TextStyle(color: Colors.white, fontFamily: 'AnimeAce'),
               ),
             ),
+
+            // Buttons
             Padding(
               padding: const EdgeInsets.all(12),
               child: Row(
@@ -268,19 +309,18 @@ class _EditProfileModalState extends State<EditProfileModal> {
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFF00FF7F),
                       foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(6),
-                      ),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                      padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 14),
                     ),
-                    onPressed: () {
-                      Navigator.pop(context, {
-                        'username': _usernameController.text,
-                        'bio': _bioController.text,
-                        'profileImage': _profileImage,
-                      });
-                    },
-                    child: const Text(
-                      'Save',
+                    onPressed: _isSaving ? null : _saveToServer,
+                    child: _isSaving
+                        ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                    )
+                        : const Text(
+                      'SAVE',
                       style: TextStyle(fontFamily: 'AnimeAce', fontWeight: FontWeight.w600),
                     ),
                   ),
@@ -288,13 +328,11 @@ class _EditProfileModalState extends State<EditProfileModal> {
                     style: OutlinedButton.styleFrom(
                       foregroundColor: Colors.white,
                       side: const BorderSide(color: Color(0xFF00FF7F)),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(6),
-                      ),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
                     ),
                     onPressed: () => Navigator.pop(context),
                     child: const Text(
-                      'Cancel',
+                      'CANCEL',
                       style: TextStyle(fontFamily: 'AnimeAce', fontWeight: FontWeight.w600),
                     ),
                   ),
