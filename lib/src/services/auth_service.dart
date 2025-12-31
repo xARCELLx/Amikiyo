@@ -1,19 +1,18 @@
+// lib/src/services/auth_service.dart
+
 import 'dart:convert';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:http/http.dart' as http;
 
-// ── NEW IMPORTS (make sure these files exist) ─────────────────────────────
-import 'storage_service.dart';   // for saveToken & saveProfile
-import 'constants.dart';         // for single baseUrl
+import 'storage_service.dart';
+import 'constants.dart';
 
 class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
-
-  // Single source of truth — change only in constants.dart
   static const String _apiBaseUrl = ApiConstants.baseUrl;
 
-  // ====================== SIGN UP (with DRF token save) ======================
-  Future<String?> signUp({
+  // ====================== SIGN UP ======================
+  Future<bool> signUp({
     required String email,
     required String password,
     required String username,
@@ -21,22 +20,16 @@ class AuthService {
     try {
       print('Starting sign-up for $email');
 
-      final UserCredential userCredential =
-      await _auth.createUserWithEmailAndPassword(
+      final UserCredential userCredential = await _auth.createUserWithEmailAndPassword(
         email: email,
         password: password,
       );
 
       final String? idToken = await userCredential.user?.getIdToken();
-      print('Firebase sign-up success. ID Token length: ${idToken?.length}');
-
       if (idToken == null) {
-        print('No ID token received from Firebase');
-        return null;
+        print('No Firebase ID token after sign-up');
+        return false;
       }
-
-      print('Sending to Django: $_apiBaseUrl/users/');
-      print('Body: ${jsonEncode({'username': username})}');
 
       final response = await http.post(
         Uri.parse('$_apiBaseUrl/users/'),
@@ -47,81 +40,83 @@ class AuthService {
         body: jsonEncode({'username': username}),
       );
 
-      print('Django Response Status: ${response.statusCode}');
-      print('Django Response Body: ${response.body}');
+      print('Django signup response: ${response.statusCode}');
+      print('Body: ${response.body}');
 
       if (response.statusCode == 201 || response.statusCode == 200) {
         final data = jsonDecode(response.body);
+        final String? drfToken = data['token'];
 
-        // SAVE THE DRF TOKEN — this is what ProfileScreen needs!
-        final String drfToken = data['token'] as String;
-        await StorageService.saveToken(drfToken);
-        print('SAVING TOKEN IN AUTH SERVICE: $drfToken');
-        await StorageService.saveProfile(data);
-
-
-        print('Profile + User created in Django!');
-        print('DRF Token saved: $drfToken');
-
-        return idToken; // still return Firebase token if needed elsewhere
-      } else {
-        print('Profile creation failed: ${response.statusCode}');
-        return null;
+        if (drfToken != null) {
+          await StorageService.saveToken(drfToken);
+          await StorageService.saveProfile(data);
+          print('SIGN UP SUCCESS → DRF Token saved');
+          return true;
+        }
       }
+
+      return false;
     } catch (e) {
       print('Sign-up error: $e');
-      return null;
+      return false;
     }
   }
 
-  // ====================== LOGIN (now syncs with Django too) ======================
-  Future<String?> login({
+  // ====================== LOGIN — FIXED FOREVER ======================
+  Future<bool> login({
     required String email,
     required String password,
   }) async {
     try {
       print('Starting login for $email');
 
-      final UserCredential userCredential =
-      await _auth.signInWithEmailAndPassword(
+      final UserCredential userCredential = await _auth.signInWithEmailAndPassword(
         email: email,
         password: password,
       );
 
-      final String? idToken = await userCredential.user?.getIdToken();
-
-      if (idToken == null) {
-        print('No ID token for login');
-        return null;
+      final String? firebaseToken = await userCredential.user?.getIdToken();
+      if (firebaseToken == null) {
+        print('No Firebase token after login');
+        return false;
       }
 
-      print('Login success. Syncing user with Django...');
+      print('Firebase login OK. Getting DRF token from Django...');
 
-      // Use email prefix as username (or change logic later)
-      final String username = email.split('@').first;
-
+      // FIXED: Use /users/ endpoint with Bearer token (same as signUp)
       final response = await http.post(
         Uri.parse('$_apiBaseUrl/users/'),
         headers: {
-          'Authorization': 'Bearer $idToken',
+          'Authorization': 'Bearer $firebaseToken',
           'Content-Type': 'application/json',
         },
-        body: jsonEncode({'username': username}),
+        body: jsonEncode({}), // empty body for login
       );
 
-      if (response.statusCode == 201 || response.statusCode == 200) {
+      print('Django token response: ${response.statusCode}');
+      print('Response: ${response.body}');
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
         final data = jsonDecode(response.body);
-        final String drfToken = data['token'] as String;
-        await StorageService.saveToken(drfToken);
-        print('SAVING TOKEN IN AUTH SERVICE: $drfToken');
-        await StorageService.saveProfile(data);
-        print('Django sync successful on login');
+        final String? drfToken = data['token'];
+
+        if (drfToken != null && drfToken.isNotEmpty) {
+          await StorageService.saveToken(drfToken);
+          print('LOGIN SUCCESS → DRF Token saved: ${drfToken.substring(0, 10)}...');
+
+          if (data['user'] != null) {
+            await StorageService.saveProfile(data['user']);
+          }
+
+          return true;
+        }
       }
 
-      return idToken;
+      print('Failed to get DRF token from server');
+      return false;
     } catch (e) {
       print('Login error: $e');
-      return null;
+      return false;
     }
   }
 
@@ -129,35 +124,37 @@ class AuthService {
   Future<void> logout() async {
     try {
       await _auth.signOut();
-      await StorageService.saveToken(''); // clear token
-      print('Logout successful');
+      await StorageService.clearToken();
+      await StorageService.clearAll();
+      print('Logged out & storage cleared');
     } catch (e) {
       print('Logout error: $e');
     }
   }
 
-  // ====================== UPDATE PROFILE (unchanged) ======================
-  Future<void> updateProfile({
-    required String idToken,
-    required Map<String, dynamic> data,
-  }) async {
+  // ====================== UPDATE PROFILE ======================
+  Future<bool> updateProfile(Map<String, dynamic> data) async {
     try {
+      final token = await StorageService.getToken();
+      if (token == null) return false;
+
       final response = await http.put(
-        Uri.parse('$_apiBaseUrl/users/1/'), // TODO: make dynamic
+        Uri.parse('$_apiBaseUrl/profiles/me/'),
         headers: {
-          'Authorization': 'Bearer $idToken',
+          'Authorization': 'Token $token',
           'Content-Type': 'application/json',
         },
         body: jsonEncode(data),
       );
 
       if (response.statusCode == 200) {
-        print('Profile updated: ${response.body}');
-      } else {
-        print('Update failed: ${response.statusCode} - ${response.body}');
+        await StorageService.saveProfile(jsonDecode(response.body));
+        return true;
       }
+      return false;
     } catch (e) {
-      print('Update error: $e');
+      print('Update profile error: $e');
+      return false;
     }
   }
 }

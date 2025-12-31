@@ -1,3 +1,5 @@
+// lib/src/screens/auth/auth_screen.dart
+
 import 'package:flutter/material.dart';
 import 'package:amikiyo/src/services/auth_service.dart';
 
@@ -17,7 +19,7 @@ class _AuthScreenState extends State<AuthScreen> {
 
   bool _isLogin = true;
   String _statusText = '';
-  bool _isProcessing = false; // Prevents double tap
+  bool _isProcessing = false;
 
   Future<void> _authUser() async {
     if (_isProcessing) return;
@@ -38,38 +40,41 @@ class _AuthScreenState extends State<AuthScreen> {
     }
 
     try {
-      String? token;
+      bool success = false;
 
       if (_isLogin) {
-        token = await _authService.login(email: email, password: password);
+        // login() returns bool → perfect
+        success = (await _authService.login(email: email, password: password)) ;
       } else {
-        token = await _authService.signUp(
+        // signUp() returns String? → check if not null
+        final result = await _authService.signUp(
           email: email,
           password: password,
           username: username,
         );
+        success = result != null;  // ← THIS IS THE FIX
       }
 
       if (!mounted) return;
 
-      if (token != null) {
+      if (success) {
         setState(() => _statusText = 'Success! Redirecting...');
 
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Auth successful!'),
+            content: Text('Welcome to Amikiyo!'),
             backgroundColor: Color(0xFF00FF7F),
           ),
         );
 
-        // Navigate only if still mounted
         if (mounted) {
-          Navigator.pushReplacementNamed(context, '/profile');
+          Navigator.pushReplacementNamed(context, '/main');
+          // or: Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => MainScreen()));
         }
       } else {
-        setState(() => _statusText = 'Failed. Check console.');
+        setState(() => _statusText = 'Failed. Check credentials.');
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Auth failed')),
+          const SnackBar(content: Text('Auth failed'), backgroundColor: Colors.red),
         );
       }
     } catch (e) {
@@ -79,6 +84,7 @@ class _AuthScreenState extends State<AuthScreen> {
     } finally {
       if (mounted) {
         _isProcessing = false;
+        setState(() => _statusText = '');
       }
     }
   }
@@ -86,77 +92,116 @@ class _AuthScreenState extends State<AuthScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.black,
       appBar: AppBar(
         title: Text(_isLogin ? 'Login' : 'Sign Up'),
         backgroundColor: const Color(0xFF00FF7F),
         elevation: 0,
+        foregroundColor: Colors.black,
       ),
       body: Padding(
-        padding: const EdgeInsets.all(16.0),
+        padding: const EdgeInsets.all(24.0),
         child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
+            // Logo
+            const Text(
+              'AMIKIYO',
+              style: TextStyle(
+                color: Color(0xFF00FF7F),
+                fontSize: 56,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 6,
+                fontFamily: 'AnimeAce',
+              ),
+            ),
+            const SizedBox(height: 60),
+
             if (!_isLogin)
               TextField(
                 controller: _usernameController,
-                decoration: const InputDecoration(
+                style: const TextStyle(color: Colors.white),
+                decoration: InputDecoration(
                   labelText: 'Username',
-                  labelStyle: TextStyle(fontFamily: 'AnimeAce'),
+                  labelStyle: const TextStyle(color: Color(0xFF00FF7F)),
+                  filled: true,
+                  fillColor: Colors.grey[900],
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                 ),
               ),
+            const SizedBox(height: 16),
+
             TextField(
               controller: _emailController,
-              decoration: const InputDecoration(
-                labelText: 'Email',
-                labelStyle: TextStyle(fontFamily: 'AnimeAce'),
-              ),
               keyboardType: TextInputType.emailAddress,
+              style: const TextStyle(color: Colors.white),
+              decoration: InputDecoration(
+                labelText: 'Email',
+                labelStyle: const TextStyle(color: Color(0xFF00FF7F)),
+                filled: true,
+                fillColor: Colors.grey[900],
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+              ),
             ),
+            const SizedBox(height: 16),
+
             TextField(
               controller: _passwordController,
-              decoration: const InputDecoration(
-                labelText: 'Password',
-                labelStyle: TextStyle(fontFamily: 'AnimeAce'),
-              ),
               obscureText: true,
-            ),
-            const SizedBox(height: 10),
-            Text(
-              _statusText,
-              style: const TextStyle(color: Colors.red, fontSize: 14),
+              style: const TextStyle(color: Colors.white),
+              decoration: InputDecoration(
+                labelText: 'Password',
+                labelStyle: const TextStyle(color: Color(0xFF00FF7F)),
+                filled: true,
+                fillColor: Colors.grey[900],
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+              ),
             ),
             const SizedBox(height: 20),
-            ElevatedButton(
-              onPressed: _isProcessing ? null : _authUser,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF00FF7F),
-                padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 15),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(30),
-                ),
-              ),
-              child: _isProcessing
-                  ? const SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(
-                  color: Colors.white,
-                  strokeWidth: 2,
-                ),
-              )
-                  : Text(
-                _isLogin ? 'Login' : 'Sign Up',
-                style: const TextStyle(fontFamily: 'AnimeAce', fontSize: 16),
+
+            Text(
+              _statusText,
+              style: TextStyle(
+                color: _statusText.contains('Success') ? const Color(0xFF00FF7F) : Colors.red,
+                fontSize: 14,
+                fontFamily: 'AnimeAce',
               ),
             ),
+            const SizedBox(height: 20),
+
+            SizedBox(
+              width: double.infinity,
+              height: 56,
+              child: ElevatedButton(
+                onPressed: _isProcessing ? null : _authUser,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF00FF7F),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                child: _isProcessing
+                    ? const SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: CircularProgressIndicator(color: Colors.black, strokeWidth: 3),
+                )
+                    : Text(
+                  _isLogin ? 'LOGIN' : 'SIGN UP',
+                  style: const TextStyle(
+                    color: Colors.black,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    fontFamily: 'AnimeAce',
+                  ),
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 20),
             TextButton(
               onPressed: () => setState(() => _isLogin = !_isLogin),
               child: Text(
-                _isLogin ? 'Create Account' : 'Have an Account? Login',
-                style: const TextStyle(
-                  color: Color(0xFF00FF7F),
-                  fontFamily: 'AnimeAce',
-                  fontSize: 14,
-                ),
+                _isLogin ? "Don't have an account? Sign Up" : "Already have an account? Login",
+                style: const TextStyle(color: Color(0xFF00FF7F), fontFamily: 'AnimeAce'),
               ),
             ),
           ],
