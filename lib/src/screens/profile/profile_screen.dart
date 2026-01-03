@@ -134,6 +134,7 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
 
   void _openPostDetail(int index) {
     final post = posts[index];
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -142,13 +143,16 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
         post: post,
         heroTag: 'post_$index',
         onDelete: () {
-          setState(() => posts.removeAt(index));
-          Navigator.pop(context);
+          if (!mounted) return;
+          setState(() {
+            posts.removeAt(index);
+          });
         },
         onUpdate: _loadEverything,
       ),
     );
   }
+
 
   @override
   Widget build(BuildContext context) {

@@ -1,4 +1,3 @@
-// lib/src/screens/profile/post_detail_modal.dart
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
@@ -7,7 +6,7 @@ import 'package:intl/intl.dart';
 import '../../config/constants.dart';
 import '../../services/constants.dart';
 import '../../services/storage_service.dart';
-import '../../services/kitsu_api.dart';  // ← ADDED KITSU API IMPORT
+import '../../services/kitsu_api.dart';
 
 class PostDetailModal extends StatefulWidget {
   final Map<String, dynamic> post;
@@ -28,263 +27,282 @@ class PostDetailModal extends StatefulWidget {
 }
 
 class _PostDetailModalState extends State<PostDetailModal> {
-  late String currentPrivacy;
+  late final Map<String, dynamic> _post;
+  late String _privacy;
+  bool _deleting = false;
+
+  /// ✅ FUTURE STORED ONCE (CRITICAL FIX)
+  Future<List<Map<String, dynamic>>>? _animeFuture;
 
   @override
   void initState() {
     super.initState();
-    currentPrivacy = widget.post['privacy'] ?? 'public';
+    _post = Map<String, dynamic>.from(widget.post);
+    _privacy = _post['privacy'] ?? 'public';
+
+    final animeTitle = _post['anime_title']?.toString().trim();
+    if (animeTitle != null && animeTitle.isNotEmpty) {
+      _animeFuture = KitsuApi.searchAnime(animeTitle);
+    }
   }
 
-  Future<void> _deletePost() async {
-    final confirm = await showDialog<bool>(
+  Future<void> _handleDelete() async {
+    final confirmed = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
         backgroundColor: Colors.grey[900],
         title: const Text('Delete Post?', style: TextStyle(color: Colors.white)),
         content: const Text('This cannot be undone.', style: TextStyle(color: Colors.white70)),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel', style: TextStyle(color: Color(0xFF00FF7F)))),
-          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Delete', style: TextStyle(color: Colors.red))),
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel', style: TextStyle(color: Color(0xFF00FF7F))),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Delete', style: TextStyle(color: Colors.red)),
+          ),
         ],
       ),
     );
 
-    if (confirm != true) return;
+    if (confirmed != true || _deleting) return;
+
+    setState(() => _deleting = true);
 
     try {
       final token = await StorageService.getToken();
       final response = await http.delete(
-        Uri.parse('${ApiConstants.baseUrl}/posts/${widget.post['id']}/'),
+        Uri.parse('${ApiConstants.baseUrl}/posts/${_post['id']}/'),
         headers: {'Authorization': 'Token $token'},
       );
 
+      if (!mounted) return;
+
       if (response.statusCode == 204) {
-        widget.onDelete();
-        if (mounted) Navigator.pop(context);
+        Navigator.of(context, rootNavigator: true).pop();
+        Future.microtask(widget.onDelete);
+      } else {
+        setState(() => _deleting = false);
       }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Failed to delete'), backgroundColor: Colors.red),
-        );
-      }
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _deleting = false);
     }
   }
 
   Future<void> _togglePrivacy() async {
-    final newPrivacy = currentPrivacy == 'public' ? 'followers' : 'public';
+    final next = _privacy == 'public' ? 'followers' : 'public';
+
     try {
       final token = await StorageService.getToken();
       final response = await http.patch(
-        Uri.parse('${ApiConstants.baseUrl}/posts/${widget.post['id']}/'),
-        headers: {'Authorization': 'Token $token', 'Content-Type': 'application/json'},
-        body: '{"privacy": "$newPrivacy"}',
+        Uri.parse('${ApiConstants.baseUrl}/posts/${_post['id']}/'),
+        headers: {
+          'Authorization': 'Token $token',
+          'Content-Type': 'application/json',
+        },
+        body: '{"privacy":"$next"}',
       );
 
       if (response.statusCode == 200 && mounted) {
-        setState(() => currentPrivacy = newPrivacy);
+        setState(() => _privacy = next);
         widget.onUpdate();
       }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Failed to update'), backgroundColor: Colors.red),
-        );
-      }
-    }
+    } catch (_) {}
   }
 
   @override
   Widget build(BuildContext context) {
-    final imageUrl = widget.post['image'] ?? '';
-    final caption = (widget.post['caption'] ?? '').toString().trim();
-    final animeTitle = widget.post['anime_title']?.toString().trim();
-    final date = DateFormat('MMM d, yyyy • h:mm a').format(DateTime.parse(widget.post['created_at']));
+    final imageUrl = _post['image'] ?? '';
+    final caption = (_post['caption'] ?? '').toString().trim();
+    final animeTitle = _post['anime_title']?.toString().trim();
+    final date = DateFormat('MMM d, yyyy • h:mm a')
+        .format(DateTime.parse(_post['created_at']));
 
-    return Container(
-      height: MediaQuery.of(context).size.height * 0.92,
-      decoration: const BoxDecoration(
+    return SafeArea(
+      top: false,
+      child: Material(
         color: Colors.black,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      child: Column(
-        children: [
-          // Header
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
-            child: Row(
-              children: [
-                IconButton(
-                  icon: const Icon(Icons.close, color: Colors.white, size: 28),
-                  onPressed: () => Navigator.pop(context),
-                ),
-                const Spacer(),
-                PopupMenuButton<String>(
-                  icon: const Icon(Icons.more_vert, color: Colors.white),
-                  color: Colors.grey[900],
-                  onSelected: (v) => v == 'delete' ? _deletePost() : _togglePrivacy(),
-                  itemBuilder: (_) => [
-                    const PopupMenuItem(
-                      value: 'delete',
-                      child: Row(children: [Icon(Icons.delete, color: Colors.red), SizedBox(width: 12), Text('Delete Post', style: TextStyle(color: Colors.red))]),
-                    ),
-                    PopupMenuItem(
-                      value: 'privacy',
-                      child: Row(
-                        children: [
-                          Icon(currentPrivacy == 'public' ? Icons.public : Icons.lock, color: Color(0xFF00FF7F)),
-                          const SizedBox(width: 12),
-                          Text(currentPrivacy == 'public' ? 'Followers Only' : 'Public', style: const TextStyle(color: Color(0xFF00FF7F))),
-                        ],
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        child: Column(
+          children: [
+            /// HEADER
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+              child: Row(
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.close, color: Colors.white),
+                    onPressed: () =>
+                        Navigator.of(context, rootNavigator: true).pop(),
+                  ),
+                  const Spacer(),
+                  PopupMenuButton<String>(
+                    color: Colors.grey[900],
+                    icon: const Icon(Icons.more_vert, color: Colors.white),
+                    onSelected: (v) =>
+                    v == 'delete' ? _handleDelete() : _togglePrivacy(),
+                    itemBuilder: (_) => [
+                      const PopupMenuItem(
+                        value: 'delete',
+                        child: Row(
+                          children: [
+                            Icon(Icons.delete, color: Colors.red),
+                            SizedBox(width: 12),
+                            Text('Delete Post',
+                                style: TextStyle(color: Colors.red)),
+                          ],
+                        ),
                       ),
-                    ),
-                  ],
-                ),
-              ],
+                      PopupMenuItem(
+                        value: 'privacy',
+                        child: Row(
+                          children: [
+                            Icon(
+                              _privacy == 'public'
+                                  ? Icons.public
+                                  : Icons.lock,
+                              color: const Color(0xFF00FF7F),
+                            ),
+                            const SizedBox(width: 12),
+                            Text(
+                              _privacy == 'public'
+                                  ? 'Followers Only'
+                                  : 'Public',
+                              style: const TextStyle(
+                                  color: Color(0xFF00FF7F)),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
-          ),
 
-          // Main Image
-          Expanded(
-            child: Hero(
-              tag: widget.heroTag,
+            /// IMAGE
+            Expanded(
               child: CachedNetworkImage(
                 imageUrl: imageUrl,
                 fit: BoxFit.contain,
                 width: double.infinity,
-                placeholder: (_, __) => const Center(child: CircularProgressIndicator(color: Color(0xFF00FF7F))),
               ),
             ),
-          ),
 
-          // Caption + Anime + Meta
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(20),
-            decoration: const BoxDecoration(color: Color(0xFF111111)),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Caption
-                if (caption.isNotEmpty)
+            /// FOOTER
+            Container(
+              padding: const EdgeInsets.all(20),
+              color: const Color(0xFF111111),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
                   Text(
-                    caption,
-                    style: const TextStyle(color: Colors.white, fontSize: 18, height: 1.5, fontWeight: FontWeight.w500),
-                  )
-                else
-                  const Text('No caption', style: TextStyle(color: Colors.white38, fontStyle: FontStyle.italic)),
-
-                const SizedBox(height: 16),
-
-                // Anime Tag — FIXED: Use Kitsu API to fetch thumbnail
-                if (animeTitle != null && animeTitle.isNotEmpty)
-                  FutureBuilder<List<Map<String, dynamic>>>(
-                    future: KitsuApi.searchAnime(animeTitle),
-                    builder: (context, snapshot) {
-                      String thumbnailUrl = Constants.placeholderImagePath;
-                      if (snapshot.hasData && snapshot.data!.isNotEmpty) {
-                        final anime = snapshot.data!.first;
-                        thumbnailUrl = anime['attributes']['posterImage']['medium'] ?? Constants.placeholderImagePath;
-                      }
-
-                      return Container(
-                        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-                        margin: const EdgeInsets.only(bottom: 12),
-                        decoration: BoxDecoration(
-                          color: Colors.grey.withOpacity(0.2),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: const Color(0xFF00FF7F), width: 1.5),
-                        ),
-                        child: Row(
-                          children: [
-                            const Icon(Icons.tag, color: Color(0xFF00FF7F), size: 20),
-                            const SizedBox(width: 8),
-                            ClipRRect(
-                              borderRadius: BorderRadius.circular(8),
-                              child: CachedNetworkImage(
-                                imageUrl: thumbnailUrl,
-                                width: 40,
-                                height: 56,
-                                fit: BoxFit.cover,
-                                placeholder: (context, url) => const CircularProgressIndicator(
-                                  color: Color(0xFF00FF7F),
-                                ),
-                                errorWidget: (context, url, error) {
-                                  debugPrint('Post anime thumbnail failed: $url, error: $error');
-                                  return Image.asset(
-                                    Constants.placeholderImagePath,
-                                    width: 40,
-                                    height: 56,
-                                    fit: BoxFit.cover,
-                                  );
-                                },
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  const Text(
-                                    'Tagged Anime',
-                                    style: TextStyle(
-                                      color: Color(0xFF00FF7F),
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    animeTitle,
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      );
-                    },
+                    caption.isNotEmpty ? caption : 'No caption',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      height: 1.5,
+                    ),
                   ),
 
-                // Date + Privacy
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Expanded(
-                      child: Text(
-                        date,
-                        style: const TextStyle(color: Colors.white38, fontSize: 13),
-                        overflow: TextOverflow.ellipsis,
+                  const SizedBox(height: 14),
+
+                  /// ✅ TAGGED ANIME (NOW STABLE)
+                  if (_animeFuture != null && animeTitle != null)
+                    FutureBuilder<List<Map<String, dynamic>>>(
+                      future: _animeFuture,
+                      builder: (context, snap) {
+                        String thumb =
+                            Constants.placeholderImagePath;
+
+                        if (snap.hasData && snap.data!.isNotEmpty) {
+                          thumb = snap.data!.first['attributes']
+                          ['posterImage']['medium'] ??
+                              thumb;
+                        }
+
+                        return Container(
+                          constraints: BoxConstraints(
+                            maxWidth:
+                            MediaQuery.of(context).size.width * 0.75,
+                          ),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.08),
+                            borderRadius: BorderRadius.circular(30),
+                            border: Border.all(
+                                color: const Color(0xFF00FF7F)),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              ClipOval(
+                                child: CachedNetworkImage(
+                                  imageUrl: thumb,
+                                  width: 28,
+                                  height: 28,
+                                  fit: BoxFit.cover,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Flexible(
+                                child: Text(
+                                  animeTitle,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                      color: Colors.white),
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+
+                  const SizedBox(height: 12),
+
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          date,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                              color: Colors.white38, fontSize: 13),
+                        ),
                       ),
-                    ),
-                    Row(
-                      children: [
-                        Icon(
-                          currentPrivacy == 'public' ? Icons.public : Icons.lock_outline,
-                          color: Colors.white54,
-                          size: 16,
+                      const SizedBox(width: 8),
+                      Icon(
+                        _privacy == 'public'
+                            ? Icons.public
+                            : Icons.lock_outline,
+                        size: 16,
+                        color: Colors.white54,
+                      ),
+                      const SizedBox(width: 6),
+                      Flexible(
+                        child: Text(
+                          _privacy == 'public'
+                              ? 'Public'
+                              : 'Followers Only',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                              color: Colors.white54, fontSize: 13),
                         ),
-                        const SizedBox(width: 6),
-                        Text(
-                          currentPrivacy == 'public' ? 'Public' : 'Followers Only',
-                          style: const TextStyle(color: Colors.white54, fontSize: 13),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ],
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
