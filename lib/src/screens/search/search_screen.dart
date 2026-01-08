@@ -124,10 +124,13 @@ class _SearchScreenState extends State<SearchScreen> {
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (_) => OtherUserProfileScreen(userId: user['id']),
+                  builder: (_) => OtherUserProfileScreen(
+                    userId: user['user_id'], // ✅ CORRECT
+                  ),
                 ),
               );
             },
+
           );
         },
       ),

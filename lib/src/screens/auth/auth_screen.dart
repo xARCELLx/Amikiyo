@@ -23,19 +23,21 @@ class _AuthScreenState extends State<AuthScreen> {
 
   Future<void> _authUser() async {
     if (_isProcessing) return;
-    _isProcessing = true;
 
-    if (!mounted) return;
-
-    setState(() => _statusText = 'Processing...');
+    setState(() {
+      _isProcessing = true;
+      _statusText = 'Processing...';
+    });
 
     final email = _emailController.text.trim();
     final password = _passwordController.text;
     final username = _usernameController.text.trim();
 
     if (email.isEmpty || password.isEmpty || (!_isLogin && username.isEmpty)) {
-      setState(() => _statusText = 'Please fill all fields');
-      _isProcessing = false;
+      setState(() {
+        _statusText = 'Please fill all fields';
+        _isProcessing = false;
+      });
       return;
     }
 
@@ -43,16 +45,17 @@ class _AuthScreenState extends State<AuthScreen> {
       bool success = false;
 
       if (_isLogin) {
-        // login() returns bool → perfect
-        success = (await _authService.login(email: email, password: password)) ;
+        success = await _authService.login(
+          email: email,
+          password: password,
+        );
       } else {
-        // signUp() returns String? → check if not null
         final result = await _authService.signUp(
           email: email,
           password: password,
           username: username,
         );
-        success = result != null;  // ← THIS IS THE FIX
+        success = result != null;
       }
 
       if (!mounted) return;
@@ -67,14 +70,20 @@ class _AuthScreenState extends State<AuthScreen> {
           ),
         );
 
-        if (mounted) {
-          Navigator.pushReplacementNamed(context, '/main');
-          // or: Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => MainScreen()));
-        }
+        // 🔥 CRITICAL FIX
+        await Future.delayed(const Duration(milliseconds: 300));
+
+        if (!mounted) return;
+
+        Navigator.pushReplacementNamed(context, '/home');
+
       } else {
         setState(() => _statusText = 'Failed. Check credentials.');
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Auth failed'), backgroundColor: Colors.red),
+          const SnackBar(
+            content: Text('Auth failed'),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     } catch (e) {
@@ -83,11 +92,14 @@ class _AuthScreenState extends State<AuthScreen> {
       }
     } finally {
       if (mounted) {
-        _isProcessing = false;
-        setState(() => _statusText = '');
+        setState(() {
+          _isProcessing = false;
+          _statusText = '';
+        });
       }
     }
   }
+
 
   @override
   Widget build(BuildContext context) {
