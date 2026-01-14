@@ -1,3 +1,5 @@
+// lib/src/screens/profile/post_detail_modal.dart
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
@@ -11,15 +13,17 @@ import '../../services/kitsu_api.dart';
 class PostDetailModal extends StatefulWidget {
   final Map<String, dynamic> post;
   final String heroTag;
-  final VoidCallback onDelete;
-  final VoidCallback onUpdate;
+
+  /// 🔥 NULLABLE = non-owner safe
+  final VoidCallback? onDelete;
+  final VoidCallback? onUpdate;
 
   const PostDetailModal({
     super.key,
     required this.post,
     required this.heroTag,
-    required this.onDelete,
-    required this.onUpdate,
+    this.onDelete,
+    this.onUpdate,
   });
 
   @override
@@ -31,8 +35,10 @@ class _PostDetailModalState extends State<PostDetailModal> {
   late String _privacy;
   bool _deleting = false;
 
-  /// ✅ FUTURE STORED ONCE (CRITICAL FIX)
+  /// ✅ Cached once (no refetch spam)
   Future<List<Map<String, dynamic>>>? _animeFuture;
+
+  bool get isOwner => widget.onDelete != null;
 
   @override
   void initState() {
@@ -46,17 +52,24 @@ class _PostDetailModalState extends State<PostDetailModal> {
     }
   }
 
+  // ───────────────── DELETE ─────────────────
+
   Future<void> _handleDelete() async {
+    if (!isOwner || _deleting) return;
+
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
         backgroundColor: Colors.grey[900],
-        title: const Text('Delete Post?', style: TextStyle(color: Colors.white)),
-        content: const Text('This cannot be undone.', style: TextStyle(color: Colors.white70)),
+        title: const Text('Delete Post?',
+            style: TextStyle(color: Colors.white)),
+        content: const Text('This cannot be undone.',
+            style: TextStyle(color: Colors.white70)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel', style: TextStyle(color: Color(0xFF00FF7F))),
+            child:
+            const Text('Cancel', style: TextStyle(color: Color(0xFF00FF7F))),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
@@ -66,37 +79,40 @@ class _PostDetailModalState extends State<PostDetailModal> {
       ),
     );
 
-    if (confirmed != true || _deleting) return;
+    if (confirmed != true) return;
 
     setState(() => _deleting = true);
 
     try {
       final token = await StorageService.getToken();
-      final response = await http.delete(
+      final res = await http.delete(
         Uri.parse('${ApiConstants.baseUrl}/posts/${_post['id']}/'),
         headers: {'Authorization': 'Token $token'},
       );
 
       if (!mounted) return;
 
-      if (response.statusCode == 204) {
+      if (res.statusCode == 204) {
         Navigator.of(context, rootNavigator: true).pop();
-        Future.microtask(widget.onDelete);
+        widget.onDelete?.call();
       } else {
         setState(() => _deleting = false);
       }
     } catch (_) {
-      if (!mounted) return;
-      setState(() => _deleting = false);
+      if (mounted) setState(() => _deleting = false);
     }
   }
 
+  // ───────────────── PRIVACY ─────────────────
+
   Future<void> _togglePrivacy() async {
+    if (!isOwner) return;
+
     final next = _privacy == 'public' ? 'followers' : 'public';
 
     try {
       final token = await StorageService.getToken();
-      final response = await http.patch(
+      final res = await http.patch(
         Uri.parse('${ApiConstants.baseUrl}/posts/${_post['id']}/'),
         headers: {
           'Authorization': 'Token $token',
@@ -105,18 +121,21 @@ class _PostDetailModalState extends State<PostDetailModal> {
         body: '{"privacy":"$next"}',
       );
 
-      if (response.statusCode == 200 && mounted) {
+      if (res.statusCode == 200 && mounted) {
         setState(() => _privacy = next);
-        widget.onUpdate();
+        widget.onUpdate?.call();
       }
     } catch (_) {}
   }
+
+  // ───────────────── UI ─────────────────
 
   @override
   Widget build(BuildContext context) {
     final imageUrl = _post['image'] ?? '';
     final caption = (_post['caption'] ?? '').toString().trim();
     final animeTitle = _post['anime_title']?.toString().trim();
+
     final date = DateFormat('MMM d, yyyy • h:mm a')
         .format(DateTime.parse(_post['created_at']));
 
@@ -127,7 +146,7 @@ class _PostDetailModalState extends State<PostDetailModal> {
         borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
         child: Column(
           children: [
-            /// HEADER
+            // ── HEADER ─────────────────
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
               child: Row(
@@ -138,51 +157,58 @@ class _PostDetailModalState extends State<PostDetailModal> {
                         Navigator.of(context, rootNavigator: true).pop(),
                   ),
                   const Spacer(),
-                  PopupMenuButton<String>(
-                    color: Colors.grey[900],
-                    icon: const Icon(Icons.more_vert, color: Colors.white),
-                    onSelected: (v) =>
-                    v == 'delete' ? _handleDelete() : _togglePrivacy(),
-                    itemBuilder: (_) => [
-                      const PopupMenuItem(
-                        value: 'delete',
-                        child: Row(
-                          children: [
-                            Icon(Icons.delete, color: Colors.red),
-                            SizedBox(width: 12),
-                            Text('Delete Post',
-                                style: TextStyle(color: Colors.red)),
-                          ],
+
+                  /// 🔥 OWNER ONLY MENU
+                  if (isOwner)
+                    PopupMenuButton<String>(
+                      color: Colors.grey[900],
+                      icon:
+                      const Icon(Icons.more_vert, color: Colors.white),
+                      onSelected: (v) {
+                        if (v == 'delete') _handleDelete();
+                        if (v == 'privacy') _togglePrivacy();
+                      },
+                      itemBuilder: (_) => [
+                        const PopupMenuItem(
+                          value: 'delete',
+                          child: Row(
+                            children: [
+                              Icon(Icons.delete, color: Colors.red),
+                              SizedBox(width: 12),
+                              Text('Delete Post',
+                                  style:
+                                  TextStyle(color: Colors.red)),
+                            ],
+                          ),
                         ),
-                      ),
-                      PopupMenuItem(
-                        value: 'privacy',
-                        child: Row(
-                          children: [
-                            Icon(
-                              _privacy == 'public'
-                                  ? Icons.public
-                                  : Icons.lock,
-                              color: const Color(0xFF00FF7F),
-                            ),
-                            const SizedBox(width: 12),
-                            Text(
-                              _privacy == 'public'
-                                  ? 'Followers Only'
-                                  : 'Public',
-                              style: const TextStyle(
-                                  color: Color(0xFF00FF7F)),
-                            ),
-                          ],
+                        PopupMenuItem(
+                          value: 'privacy',
+                          child: Row(
+                            children: [
+                              Icon(
+                                _privacy == 'public'
+                                    ? Icons.public
+                                    : Icons.lock,
+                                color: const Color(0xFF00FF7F),
+                              ),
+                              const SizedBox(width: 12),
+                              Text(
+                                _privacy == 'public'
+                                    ? 'Followers Only'
+                                    : 'Public',
+                                style: const TextStyle(
+                                    color: Color(0xFF00FF7F)),
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
+                      ],
+                    ),
                 ],
               ),
             ),
 
-            /// IMAGE
+            // ── IMAGE ─────────────────
             Expanded(
               child: CachedNetworkImage(
                 imageUrl: imageUrl,
@@ -191,7 +217,7 @@ class _PostDetailModalState extends State<PostDetailModal> {
               ),
             ),
 
-            /// FOOTER
+            // ── FOOTER ─────────────────
             Container(
               padding: const EdgeInsets.all(20),
               color: const Color(0xFF111111),
@@ -209,7 +235,7 @@ class _PostDetailModalState extends State<PostDetailModal> {
 
                   const SizedBox(height: 14),
 
-                  /// ✅ TAGGED ANIME (NOW STABLE)
+                  // ── TAGGED ANIME ─────────────────
                   if (_animeFuture != null && animeTitle != null)
                     FutureBuilder<List<Map<String, dynamic>>>(
                       future: _animeFuture,
@@ -285,16 +311,12 @@ class _PostDetailModalState extends State<PostDetailModal> {
                         color: Colors.white54,
                       ),
                       const SizedBox(width: 6),
-                      Flexible(
-                        child: Text(
-                          _privacy == 'public'
-                              ? 'Public'
-                              : 'Followers Only',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                              color: Colors.white54, fontSize: 13),
-                        ),
+                      Text(
+                        _privacy == 'public'
+                            ? 'Public'
+                            : 'Followers Only',
+                        style: const TextStyle(
+                            color: Colors.white54, fontSize: 13),
                       ),
                     ],
                   ),

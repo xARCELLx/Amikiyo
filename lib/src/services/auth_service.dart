@@ -39,9 +39,9 @@ class AuthService {
         final data = jsonDecode(response.body);
         final token = data['token'];
 
-        if (token != null) {
+        if (token != null && token.isNotEmpty) {
           await StorageService.saveToken(token);
-          await StorageService.saveProfile(data['user'] ?? data);
+          await StorageService.saveProfile(data['profile'] ?? data['user']);
           return true;
         }
       }
@@ -53,7 +53,7 @@ class AuthService {
     }
   }
 
-  // ====================== LOGIN (REAL FIX) ======================
+  // ====================== LOGIN (FIXED FOREVER) ======================
   Future<bool> login({
     required String email,
     required String password,
@@ -67,24 +67,22 @@ class AuthService {
       final firebaseToken = await cred.user?.getIdToken(true);
       if (firebaseToken == null) return false;
 
-      /// 🔥 IMPORTANT: LOGIN ENDPOINT (NOT /users/)
+      // 🔥 SAME ENDPOINT AS SIGNUP
       final response = await http.post(
-        Uri.parse('$_apiBaseUrl/auth/login/'),
+        Uri.parse('$_apiBaseUrl/users/'),
         headers: {
           'Authorization': 'Bearer $firebaseToken',
           'Content-Type': 'application/json',
         },
       );
 
-      if (response.statusCode == 200) {
+      if (response.statusCode == 200 || response.statusCode == 201) {
         final data = jsonDecode(response.body);
         final drfToken = data['token'];
 
         if (drfToken != null && drfToken.isNotEmpty) {
           await StorageService.saveToken(drfToken);
-          if (data['user'] != null) {
-            await StorageService.saveProfile(data['user']);
-          }
+          await StorageService.saveProfile(data['profile'] ?? data['user']);
           return true;
         }
       }
