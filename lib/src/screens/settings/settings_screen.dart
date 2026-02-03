@@ -2,6 +2,8 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../profile/edit_profile_modal.dart';
+import '../../services/auth_service.dart';
+import '../../screens/auth/auth_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
   final String username;
@@ -124,11 +126,55 @@ class SettingsScreen extends StatelessWidget {
               ),
               tileColor: Colors.white.withOpacity(0.05),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-              onTap: () {
-                // TODO: Implement logout
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Logged out'), backgroundColor: Colors.red),
+              onTap: () async {
+                // Show confirmation dialog first (best practice for logout)
+                final confirm = await showDialog<bool>(
+                  context: context,
+                  builder: (context) => AlertDialog(
+                    title: const Text('Logout?'),
+                    content: const Text('Are you sure you want to logout?'),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(context, false),
+                        child: const Text('Cancel'),
+                      ),
+                      TextButton(
+                        onPressed: () => Navigator.pop(context, true),
+                        child: const Text('Logout', style: TextStyle(color: Colors.red)),
+                      ),
+                    ],
+                  ),
                 );
+
+                if (confirm != true) return;
+
+                try {
+                  await AuthService().logout();
+
+                  // Clear any cached data if needed
+                  // await StorageService.clearAll();  // optional - if you want to wipe everything
+
+                  // Navigate to AuthScreen and replace current route
+                  Navigator.pushReplacement(
+                    context,
+                    MaterialPageRoute(builder: (context) => const AuthScreen()),
+                  );
+
+                  // Show success snackbar AFTER navigation (on the new screen)
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Logged out successfully'),
+                      backgroundColor: Colors.green,
+                    ),
+                  );
+                } catch (e) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Logout failed: $e'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
               },
             ),
           ],

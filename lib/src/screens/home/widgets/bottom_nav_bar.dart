@@ -14,10 +14,14 @@ class BottomNavBar extends StatelessWidget {
     required this.currentIndex,
   });
 
-  void _navigate(BuildContext context, Widget screen) {
-    Navigator.pushReplacement(
-      context,
+  /// ✅ SAFE TAB NAVIGATION
+  /// - Clears stacked routes
+  /// - Keeps app alive
+  /// - Prevents app exit on back
+  void _switchTab(BuildContext context, Widget screen) {
+    Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute(builder: (_) => screen),
+          (route) => route.isFirst,
     );
   }
 
@@ -26,31 +30,47 @@ class BottomNavBar extends StatelessWidget {
     return BottomNavigationBar(
       currentIndex: currentIndex,
       type: BottomNavigationBarType.fixed,
+      backgroundColor: Colors.black,
       selectedItemColor: const Color(0xFF00FF7F),
       unselectedItemColor: Colors.white54,
-      backgroundColor: Colors.black,
+      showUnselectedLabels: true,
       items: const [
-        BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
-        BottomNavigationBarItem(icon: Icon(Icons.group), label: 'Groups'),
-        BottomNavigationBarItem(icon: Icon(Icons.chat), label: 'Chat'),
-        BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profile'),
+        BottomNavigationBarItem(
+          icon: Icon(Icons.home),
+          label: 'Home',
+        ),
+        BottomNavigationBarItem(
+          icon: Icon(Icons.group),
+          label: 'Groups',
+        ),
+        BottomNavigationBarItem(
+          icon: Icon(Icons.chat),
+          label: 'Chat',
+        ),
+        BottomNavigationBarItem(
+          icon: Icon(Icons.person),
+          label: 'Profile',
+        ),
       ],
       onTap: (index) {
         if (index == currentIndex) return;
 
         switch (index) {
           case 0:
-            _navigate(context, const HomeScreen());
+            _switchTab(context, const HomeScreen());
             break;
+
           case 1:
-            _navigate(context, const GroupsScreen());
+            _switchTab(context, const GroupsScreen());
             break;
+
           case 2:
-          // ✅ CHAT LIST — NOT CHAT SCREEN
-            _navigate(context, const ChatListScreen());
+          /// ✅ CHAT LIST stays inside bottom nav
+            _switchTab(context, const ChatListScreen());
             break;
+
           case 3:
-            _navigate(context, const ProfileScreen());
+            _switchTab(context, const ProfileScreen());
             break;
         }
       },

@@ -1,23 +1,29 @@
 // lib/src/services/storage_service.dart
+
 import 'dart:convert';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class StorageService {
-  // Secure storage for TOKEN (encrypted + works on Android 11+)
+  // ───────────────── SECURE STORAGE (TOKEN) ─────────────────
+
   static const _secureStorage = FlutterSecureStorage();
   static const String _tokenKey = 'drf_auth_token';
 
-  // Regular SharedPreferences for non-sensitive data (profile cache)
+  // ───────────────── SHARED PREFS (NON-SENSITIVE) ─────────────────
+
   static const String _profileKey = 'cached_profile';
 
-  // Save token securely
+  // 🔥 NEW: user id key
+  static const String _userIdKey = 'user_id';
+
+  // ───────────────── TOKEN ─────────────────
+
   static Future<void> saveToken(String token) async {
     await _secureStorage.write(key: _tokenKey, value: token);
     print('TOKEN SAVED SECURELY: ${token.substring(0, 10)}...');
   }
 
-  // Get token securely
   static Future<String?> getToken() async {
     final token = await _secureStorage.read(key: _tokenKey);
     if (token == null) {
@@ -28,20 +34,49 @@ class StorageService {
     return token;
   }
 
-  // Clear token
   static Future<void> clearToken() async {
     await _secureStorage.delete(key: _tokenKey);
     print('TOKEN CLEARED FROM SECURE STORAGE');
   }
 
-  // Save profile cache (safe to use SharedPreferences)
+  static Future<bool> hasToken() async {
+    return await _secureStorage.containsKey(key: _tokenKey);
+  }
+
+  // ───────────────── USER ID (🔥 NEW) ─────────────────
+
+  /// Save logged-in user id
+  static Future<void> saveUserId(int userId) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_userIdKey, userId);
+    print('USER ID SAVED: $userId');
+  }
+
+  /// Get logged-in user id
+  static Future<int?> getUserId() async {
+    final prefs = await SharedPreferences.getInstance();
+    final id = prefs.getInt(_userIdKey);
+    if (id == null) {
+      print('No user id found in storage');
+    } else {
+      print('USER ID LOADED: $id');
+    }
+    return id;
+  }
+
+  // ───────────────── PROFILE CACHE ─────────────────
+
   static Future<void> saveProfile(Map<String, dynamic> profile) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_profileKey, jsonEncode(profile));
     print('Profile cached');
+
+    // 🔥 AUTO-SAVE USER ID IF PRESENT
+    if (profile['user_id'] != null) {
+      await saveUserId(profile['user_id']);
+    }
   }
 
-  // Get cached profile
   static Future<Map<String, dynamic>?> getCachedProfile() async {
     final prefs = await SharedPreferences.getInstance();
     final String? jsonString = prefs.getString(_profileKey);
@@ -49,16 +84,13 @@ class StorageService {
     return jsonDecode(jsonString) as Map<String, dynamic>;
   }
 
-  // Clear everything
+  // ───────────────── CLEAR ALL ─────────────────
+
   static Future<void> clearAll() async {
     await clearToken();
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_profileKey);
+    await prefs.remove(_userIdKey);
     print('All storage cleared');
-  }
-
-  // Debug: Check if token exists
-  static Future<bool> hasToken() async {
-    return await _secureStorage.containsKey(key: _tokenKey);
   }
 }
