@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:firebase_database/firebase_database.dart';
 
 import '../../services/constants.dart';
 import '../../services/storage_service.dart';
@@ -28,12 +29,12 @@ class _SharePostBottomSheetState extends State<SharePostBottomSheet> {
   @override
   void initState() {
     super.initState();
-    _fetchShareableUsers();
+    _fetchUsers();
   }
 
-  // ───────────────── FETCH USERS (FOLLOWING + CHATS) ─────────────────
+  // ───────────────── FETCH FOLLOWING + CHAT USERS ─────────────────
 
-  Future<void> _fetchShareableUsers() async {
+  Future<void> _fetchUsers() async {
     try {
       final token = await StorageService.getToken();
       final myId = await StorageService.getUserId();
@@ -43,80 +44,114 @@ class _SharePostBottomSheetState extends State<SharePostBottomSheet> {
         return;
       }
 
-      // ── FETCH FOLLOWING USERS ──
       final followingRes = await http.get(
-        Uri.parse(
-            '${ApiConstants.baseUrl}/profiles/$myId/following/'),
+        Uri.parse('${ApiConstants.baseUrl}/profiles/$myId/following/'),
         headers: {'Authorization': 'Token $token'},
       );
 
-      final List following = followingRes.statusCode == 200
-          ? jsonDecode(followingRes.body)
-          : [];
-
-      // ── FETCH CHAT USERS ──
       final chatRes = await http.get(
         Uri.parse('${ApiConstants.baseUrl}/chat/my/'),
         headers: {'Authorization': 'Token $token'},
       );
 
-      final List chats = chatRes.statusCode == 200
-          ? jsonDecode(chatRes.body)
-          : [];
+      final List following =
+      followingRes.statusCode == 200 ? jsonDecode(followingRes.body) : [];
 
-      // ── EXTRACT OTHER USERS FROM CHATS ──
-      final List<Map<String, dynamic>> chatUsers = chats
-          .where((c) => c['other_user'] != null)
-          .map<Map<String, dynamic>>(
-              (c) => Map<String, dynamic>.from(c['other_user']))
-          .toList();
+      final List chats =
+      chatRes.statusCode == 200 ? jsonDecode(chatRes.body) : [];
 
-      // ── MERGE & REMOVE DUPLICATES ──
       final Map<int, Map<String, dynamic>> uniqueUsers = {};
 
-      for (final u in [...following, ...chatUsers]) {
-        final int? uid = u['user_id'] ?? u['id'];
+      // FOLLOWING USERS
+      for (final u in following) {
+        final int? uid = u['user_id'];
         if (uid != null) {
           uniqueUsers[uid] = Map<String, dynamic>.from(u);
         }
       }
 
+      // CHAT USERS
+      for (final c in chats) {
+        if (c['other_user'] != null) {
+          final u = c['other_user'];
+          final int? uid = u['id'];
+          if (uid != null) {
+            uniqueUsers[uid] = Map<String, dynamic>.from(u);
+          }
+        }
+      }
+
       setState(() {
-        _users.clear();
-        _users.addAll(uniqueUsers.values);
+        _users
+          ..clear()
+          ..addAll(uniqueUsers.values);
         _loading = false;
       });
     } catch (e) {
-      debugPrint('SHARE POST ERROR: $e');
+      debugPrint('SHARE USERS ERROR: $e');
       setState(() => _loading = false);
     }
   }
 
-  // ───────────────── SEND POST (FIREBASE HOOK) ─────────────────
+  // ───────────────── SEND POST (FIREBASE ONLY) ─────────────────
 
-  Future<void> _sendPostToUser(Map<String, dynamic> user) async {
+  Future<void> _sendPost(Map<String, dynamic> user) async {
     if (_sending) return;
 
     setState(() => _sending = true);
 
     try {
-      /*
-        🔥 THIS IS WHERE YOU SEND TO FIREBASE 🔥
+      final token = await StorageService.getToken();
+      final myId = await StorageService.getUserId();
 
-        Example payload you should send:
-        {
-          type: "post",
-          post_id: widget.post['id'],
-          image: widget.post['image'],
-          caption: widget.post['caption'],
-          sender_id: myId,
-          receiver_id: user['user_id']
-        }
-      */
+      if (token == null || myId == null) return;
 
-      Navigator.pop(context);
-    } catch (_) {
-      setState(() => _sending = false);
+      // 🔥 SAME LOGIC AS MESSAGE BUTTON
+      final res = await http.post(
+        Uri.parse('${ApiConstants.baseUrl}/chat/get-or-create/'),
+        headers: {
+          'Authorization': 'Token $token',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          'user_id': user['user_id'] ?? user['id'],
+        }),
+      );
+
+      if (res.statusCode != 200) return;
+
+      final data = jsonDecode(res.body);
+      final String chatRoomId = data['id'];
+
+      final db = FirebaseDatabase.instance
+          .ref('chats/$chatRoomId/messages');
+
+      await db.push().set({
+        'type': 'post',
+        'senderId': myId,
+        'timestamp': ServerValue.timestamp,
+
+        // 🔥 POST SNAPSHOT (FULL)
+        'post': {
+          'id': widget.post['id'],
+          'image': widget.post['image'],
+          'caption': widget.post['caption'],
+          'anime_title': widget.post['anime_title'],
+          'created_at': widget.post['created_at'],
+          'privacy': widget.post['privacy'],
+          'author_user_id': widget.post['author_user_id'],
+          'author_username': widget.post['author_username'],
+          'likes_count': widget.post['likes_count'] ?? 0,
+          'comments_count': widget.post['comments_count'] ?? 0,
+          'is_liked': widget.post['is_liked'] ?? false,
+        },
+      });
+
+      if (mounted) Navigator.pop(context);
+    } catch (e) {
+      debugPrint('SEND POST ERROR: $e');
+    } finally {
+      if (mounted) setState(() => _sending = false);
     }
   }
 
@@ -134,7 +169,6 @@ class _SharePostBottomSheetState extends State<SharePostBottomSheet> {
         children: [
           const SizedBox(height: 12),
 
-          // ── HEADER ─────────────────
           const Text(
             'Share post',
             style: TextStyle(
@@ -146,7 +180,6 @@ class _SharePostBottomSheetState extends State<SharePostBottomSheet> {
 
           const Divider(color: Colors.white12),
 
-          // ── USER LIST ─────────────────
           Expanded(
             child: _loading
                 ? const Center(
@@ -163,12 +196,12 @@ class _SharePostBottomSheetState extends State<SharePostBottomSheet> {
             )
                 : ListView.builder(
               itemCount: _users.length,
-              itemBuilder: (_, index) {
-                final user = _users[index];
+              itemBuilder: (_, i) {
+                final u = _users[i];
                 final String username =
-                    user['username'] ?? '';
+                    u['username'] ?? 'User';
                 final String? image =
-                user['profile_image'];
+                u['profile_image'];
 
                 return ListTile(
                   leading: CircleAvatar(
@@ -178,8 +211,10 @@ class _SharePostBottomSheetState extends State<SharePostBottomSheet> {
                         ? NetworkImage(image)
                         : null,
                     child: image == null
-                        ? const Icon(Icons.person,
-                        color: Colors.white54)
+                        ? const Icon(
+                      Icons.person,
+                      color: Colors.white54,
+                    )
                         : null,
                   ),
                   title: Text(
@@ -194,8 +229,7 @@ class _SharePostBottomSheetState extends State<SharePostBottomSheet> {
                       Icons.send,
                       color: Color(0xFF00FF7F),
                     ),
-                    onPressed: () =>
-                        _sendPostToUser(user),
+                    onPressed: () => _sendPost(u),
                   ),
                 );
               },
