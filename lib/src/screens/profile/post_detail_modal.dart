@@ -13,7 +13,6 @@ import '../../services/storage_service.dart';
 import '../../services/kitsu_api.dart';
 
 // 👇 REQUIRED: your existing comments bottom sheet
-// adjust path ONLY if your file lives elsewhere
 import '../chat/share_post_bottom_sheet.dart';
 import '../comments/comments_bottom_sheet.dart';
 
@@ -59,6 +58,11 @@ class _PostDetailModalState extends State<PostDetailModal> {
   // ───────────────── COMMENT STATE ─────────────────
 
   int _commentsCount = 0;
+
+  // ───────────────── DERIVED FLAGS ─────────────────
+
+  bool get _isPrivateAndLocked =>
+      _ownershipResolved && !_isOwner && _privacy != 'public';
 
   // ───────────────── INIT ─────────────────
 
@@ -191,7 +195,7 @@ class _PostDetailModalState extends State<PostDetailModal> {
   // ───────────────── LIKE / UNLIKE ─────────────────
 
   Future<void> _toggleLike() async {
-    if (_likeProcessing) return;
+    if (_likeProcessing || _isPrivateAndLocked) return;
 
     final prevLiked = _isLiked;
     final prevCount = _likesCount;
@@ -233,9 +237,11 @@ class _PostDetailModalState extends State<PostDetailModal> {
     }
   }
 
-  // ───────────────── COMMENTS (REAL INTEGRATION) ─────────────────
+  // ───────────────── COMMENTS ─────────────────
 
   Future<void> _openComments() async {
+    if (_isPrivateAndLocked) return;
+
     final updatedCount = await showModalBottomSheet<int>(
       context: context,
       isScrollControlled: true,
@@ -246,33 +252,30 @@ class _PostDetailModalState extends State<PostDetailModal> {
       ),
     );
 
-    // 👇 sync count when comments sheet closes
     if (updatedCount != null && mounted) {
-      setState(() {
-        _commentsCount = updatedCount;
-      });
+      setState(() => _commentsCount = updatedCount);
     }
   }
 
   Future<void> _openShareSheet() async {
+    if (_isPrivateAndLocked) return;
+
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.black,
       isScrollControlled: true,
-      builder: (_) => SharePostBottomSheet(
-        post: _post, // ✅ FULL POST MAP
-      ),
+      builder: (_) => SharePostBottomSheet(post: _post),
     );
   }
-
-
-
-
 
   // ───────────────── UI ─────────────────
 
   @override
   Widget build(BuildContext context) {
+    if (_ownershipResolved && _isPrivateAndLocked) {
+      return _buildPrivatePostBlockedUI();
+    }
+
     final imageUrl = _post['image'] ?? '';
     final caption = (_post['caption'] ?? '').toString().trim();
     final animeTitle = _post['anime_title']?.toString().trim();
@@ -290,6 +293,46 @@ class _PostDetailModalState extends State<PostDetailModal> {
             _buildHeader(),
             _buildImageWithActions(imageUrl),
             _buildFooter(caption, animeTitle, date),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ───────────────── PRIVATE BLOCK UI ─────────────────
+
+  Widget _buildPrivatePostBlockedUI() {
+    return SafeArea(
+      child: Material(
+        color: Colors.black,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.lock, size: 64, color: Colors.white54),
+            const SizedBox(height: 20),
+            const Text(
+              'Sorry, this post is private',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Only the owner can view this post.',
+              style: TextStyle(color: Colors.white54),
+            ),
+            const SizedBox(height: 24),
+            TextButton(
+              onPressed: () =>
+                  Navigator.of(context, rootNavigator: true).pop(),
+              child: const Text(
+                'Close',
+                style: TextStyle(color: Color(0xFF00FF7F)),
+              ),
+            ),
           ],
         ),
       ),
@@ -378,12 +421,11 @@ class _PostDetailModalState extends State<PostDetailModal> {
                 Text('$_commentsCount',
                     style:
                     const TextStyle(color: Colors.white)),
-
                 IconButton(
-                  icon: const Icon(Icons.send, color: Colors.white),
+                  icon: const Icon(Icons.send,
+                      color: Colors.white),
                   onPressed: _openShareSheet,
                 ),
-
               ],
             ),
           ),
@@ -404,8 +446,8 @@ class _PostDetailModalState extends State<PostDetailModal> {
         children: [
           Text(
             caption.isNotEmpty ? caption : 'No caption',
-            style: const TextStyle(
-                color: Colors.white, fontSize: 18),
+            style:
+            const TextStyle(color: Colors.white, fontSize: 18),
           ),
           const SizedBox(height: 14),
           if (_animeFuture != null && animeTitle != null)
@@ -459,13 +501,13 @@ class _PostDetailModalState extends State<PostDetailModal> {
             maxWidth: MediaQuery.of(context).size.width * 0.75,
           ),
           child: Container(
-            padding:
-            const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            padding: const EdgeInsets.symmetric(
+                horizontal: 10, vertical: 6),
             decoration: BoxDecoration(
               color: Colors.white.withOpacity(0.08),
               borderRadius: BorderRadius.circular(30),
-              border:
-              Border.all(color: const Color(0xFF00FF7F)),
+              border: Border.all(
+                  color: const Color(0xFF00FF7F)),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,

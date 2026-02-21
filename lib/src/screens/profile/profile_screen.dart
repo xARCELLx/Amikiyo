@@ -41,11 +41,26 @@ class _ProfileScreenState extends State<ProfileScreen>
 
   bool get isOwner => widget.userId == null;
 
+  /// 🔐 FINAL SOURCE OF TRUTH FOR UI POSTS
+  List<Map<String, dynamic>> get visiblePosts {
+    if (isOwner) {
+      return List<Map<String, dynamic>>.from(posts);
+    }
+    return posts
+        .where((p) => p['privacy'] == 'public')
+        .map<Map<String, dynamic>>(
+          (p) => Map<String, dynamic>.from(p),
+    )
+        .toList();
+  }
+
   @override
   void initState() {
     super.initState();
-    _controller =
-        AnimationController(vsync: this, duration: const Duration(milliseconds: 800));
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 800),
+    );
     _fadeAnimation =
         CurvedAnimation(parent: _controller, curve: Curves.easeIn);
     _loadEverything();
@@ -126,21 +141,25 @@ class _ProfileScreenState extends State<ProfileScreen>
     return unique;
   }
 
-  void _openPostDetail(int index) {
+  void _openPostDetail(Map<String, dynamic> post) {
+    if (!isOwner && post['privacy'] != 'public') return;
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (_) => PostDetailModal(
-        post: posts[index],
-        heroTag: 'post_$index',
+        post: post,
+        heroTag: 'post_${post['id']}',
         onDelete: isOwner
             ? () {
           if (!mounted) return;
-          setState(() => posts.removeAt(index));
+          setState(() {
+            posts.removeWhere((p) => p['id'] == post['id']);
+          });
         }
-            : () {},
-        onUpdate: isOwner ? _loadEverything : () {},
+            : null,
+        onUpdate: isOwner ? _loadEverything : null,
       ),
     );
   }
@@ -198,7 +217,6 @@ class _ProfileScreenState extends State<ProfileScreen>
 
     if (res.statusCode == 200) {
       final data = jsonDecode(res.body);
-
       setState(() {
         profileData!['is_following'] = data['followed'];
         profileData!['followers_count'] = data['followers_count'];
@@ -214,7 +232,7 @@ class _ProfileScreenState extends State<ProfileScreen>
       return const Scaffold(
         backgroundColor: Colors.black,
         body: Center(
-          child: CircularProgressIndicator(color: Color(0xFF00FF7F)),
+          child: CircularProgressIndicator(color: Color(0xFFFFFFFF)),
         ),
       );
     }
@@ -223,7 +241,7 @@ class _ProfileScreenState extends State<ProfileScreen>
     final bio = profileData!['bio'] ?? 'No bio yet';
     final profileImage = profileData!['profile_image'] ?? '';
     final board = profileData!['anime_board'] ?? {};
-    final postsCount = profileData!['posts_count'] ?? posts.length;
+    final postsCount = visiblePosts.length;
     final followersCount = profileData!['followers_count'] ?? 0;
     final followingCount = profileData!['following_count'] ?? 0;
 
@@ -232,7 +250,7 @@ class _ProfileScreenState extends State<ProfileScreen>
       backgroundColor: Colors.black,
       body: RefreshIndicator(
         onRefresh: _loadEverything,
-        color: const Color(0xFF00FF7F),
+        color: const Color(0xFFFFFFFF),
         child: Stack(
           children: [
             Container(
@@ -250,7 +268,7 @@ class _ProfileScreenState extends State<ProfileScreen>
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // HEADER (identity only)
+                      // HEADER
                       Padding(
                         padding: const EdgeInsets.all(16),
                         child: Row(
@@ -258,7 +276,8 @@ class _ProfileScreenState extends State<ProfileScreen>
                             CircleAvatar(
                               radius: 40,
                               backgroundImage: profileImage.isEmpty
-                                  ? const AssetImage('assets/images/default_profile.png')
+                                  ? const AssetImage(
+                                  'assets/images/default_profile.png')
                                   : CachedNetworkImageProvider(profileImage)
                               as ImageProvider,
                             ),
@@ -284,7 +303,7 @@ class _ProfileScreenState extends State<ProfileScreen>
                             if (isOwner)
                               IconButton(
                                 icon: const Icon(Icons.settings,
-                                    color: Color(0xFF00FF7F)),
+                                    color: Color(0xFFFFFFFF)),
                                 onPressed: () async {
                                   final result = await Navigator.push(
                                     context,
@@ -355,15 +374,15 @@ class _ProfileScreenState extends State<ProfileScreen>
                                 'Authorization': 'Token $token',
                                 'Content-Type': 'application/json',
                               },
-                              body:
-                              jsonEncode({'anime_board': updatedBoard}),
+                              body: jsonEncode(
+                                  {'anime_board': updatedBoard}),
                             );
                           },
                           child: _animeBoardWidget(),
                         ),
                       ),
 
-                      // ACTION ROW (modern)
+                      // ACTION ROW
                       if (!isOwner)
                         Padding(
                           padding: const EdgeInsets.symmetric(
@@ -377,15 +396,13 @@ class _ProfileScreenState extends State<ProfileScreen>
                                     backgroundColor:
                                     profileData!['is_following']
                                         ? Colors.grey[800]
-                                        : const Color(0xFF00FF7F),
+                                        : const Color(0xFFFFFFFF),
                                     foregroundColor: Colors.black,
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(6),
-                                    ),
                                   ),
-                                  child: Text(profileData!['is_following']
-                                      ? 'Following'
-                                      : 'Follow'),
+                                  child: Text(
+                                      profileData!['is_following']
+                                          ? 'Following'
+                                          : 'Follow'),
                                 ),
                               ),
                               const SizedBox(width: 8),
@@ -397,45 +414,13 @@ class _ProfileScreenState extends State<ProfileScreen>
                                   style: OutlinedButton.styleFrom(
                                     foregroundColor: Colors.white,
                                     side: const BorderSide(
-                                        color: Color(0xFF00FF7F)),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(6),
-                                    ),
+                                        color: Color(0xFFFFFFFF)),
                                   ),
                                 ),
                               ),
                             ],
                           ),
                         ),
-
-                      const SizedBox(height: 16),
-
-                      // BADGES
-                      const Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 16),
-                        child: Text('Badges',
-                            style: TextStyle(
-                                color: Color(0xFF00FF7F),
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold)),
-                      ),
-                      const SizedBox(height: 8),
-                      const Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 16),
-                        child: Wrap(
-                          spacing: 8,
-                          children: [
-                            Chip(
-                                avatar: Icon(Icons.star,
-                                    color: Color(0xFF00FF7F)),
-                                label: Text('Top Poster')),
-                            Chip(
-                                avatar: Icon(Icons.book,
-                                    color: Color(0xFF00FF7F)),
-                                label: Text('Anime Guru')),
-                          ],
-                        ),
-                      ),
 
                       const SizedBox(height: 16),
 
@@ -447,35 +432,36 @@ class _ProfileScreenState extends State<ProfileScreen>
                           MainAxisAlignment.spaceAround,
                           children: [
                             _stat('$postsCount', 'Posts'),
-                            //followers
                             GestureDetector(
                               onTap: () {
                                 Navigator.push(
                                   context,
                                   MaterialPageRoute(
                                     builder: (_) => FollowersScreen(
-                                      userId: widget.userId ?? profileData!['user_id'],
+                                      userId: widget.userId ??
+                                          profileData!['user_id'],
                                     ),
                                   ),
                                 );
                               },
-                              child: _stat('$followersCount', 'Followers'),
+                              child:
+                              _stat('$followersCount', 'Followers'),
                             ),
-                            //following
                             GestureDetector(
                               onTap: () {
                                 Navigator.push(
                                   context,
                                   MaterialPageRoute(
                                     builder: (_) => FollowingScreen(
-                                      userId: widget.userId ?? profileData!['user_id'],
+                                      userId: widget.userId ??
+                                          profileData!['user_id'],
                                     ),
                                   ),
                                 );
                               },
-                              child: _stat('$followingCount', 'Following'),
+                              child:
+                              _stat('$followingCount', 'Following'),
                             ),
-
                           ],
                         ),
                       ),
@@ -495,18 +481,22 @@ class _ProfileScreenState extends State<ProfileScreen>
                             crossAxisSpacing: 8,
                             mainAxisSpacing: 8,
                           ),
-                          itemCount: posts.length,
-                          itemBuilder: (_, i) => GestureDetector(
-                            onTap: () => _openPostDetail(i),
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(6),
-                              child: CachedNetworkImage(
-                                imageUrl: posts[i]['image'] ??
-                                    Constants.placeholderImagePath,
-                                fit: BoxFit.cover,
+                          itemCount: visiblePosts.length,
+                          itemBuilder: (_, i) {
+                            final post = visiblePosts[i];
+                            return GestureDetector(
+                              onTap: () => _openPostDetail(post),
+                              child: ClipRRect(
+                                borderRadius:
+                                BorderRadius.circular(6),
+                                child: CachedNetworkImage(
+                                  imageUrl: post['image'] ??
+                                      Constants.placeholderImagePath,
+                                  fit: BoxFit.cover,
+                                ),
                               ),
-                            ),
-                          ),
+                            );
+                          },
                         ),
                       ),
 
@@ -519,19 +509,23 @@ class _ProfileScreenState extends State<ProfileScreen>
           ],
         ),
       ),
-      bottomNavigationBar: const BottomNavBar(currentIndex: 3),
+      bottomNavigationBar:
+      const BottomNavBar(currentIndex: 3),
       floatingActionButton: isOwner
           ? FloatingActionButton(
-        backgroundColor: const Color(0xFF00FF7F),
+        backgroundColor:
+        const Color(0xFFFFFFFF),
         onPressed: () async {
           final result = await Navigator.push(
             context,
             MaterialPageRoute(
-                builder: (_) => const CreatePostScreen()),
+                builder: (_) =>
+                const CreatePostScreen()),
           );
           if (result == true) _loadEverything();
         },
-        child: const Icon(Icons.add, color: Colors.black),
+        child:
+        const Icon(Icons.add, color: Colors.black),
       )
           : null,
     );
@@ -545,14 +539,14 @@ class _ProfileScreenState extends State<ProfileScreen>
       decoration: BoxDecoration(
         color: Colors.white.withOpacity(0.1),
         borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: const Color(0xFF00FF7F)),
+        border: Border.all(color: const Color(0xFFFFFFFF)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text('Anime Board',
               style: TextStyle(
-                  color: Color(0xFF00FF7F),
+                  color: Color(0xFFFFFFFF),
                   fontSize: 18,
                   fontWeight: FontWeight.bold)),
           const SizedBox(height: 8),
@@ -564,14 +558,18 @@ class _ProfileScreenState extends State<ProfileScreen>
             child: Row(
               children: _getUniqueAnime().map((anime) {
                 return Padding(
-                  padding: const EdgeInsets.only(right: 8),
+                  padding:
+                  const EdgeInsets.only(right: 8),
                   child: Column(
                     children: [
                       ClipRRect(
-                        borderRadius: BorderRadius.circular(6),
+                        borderRadius:
+                        BorderRadius.circular(6),
                         child: CachedNetworkImage(
-                          imageUrl: anime['thumbnail'] ??
-                              Constants.placeholderImagePath,
+                          imageUrl:
+                          anime['thumbnail'] ??
+                              Constants
+                                  .placeholderImagePath,
                           width: 70,
                           height: 100,
                           fit: BoxFit.cover,
@@ -583,10 +581,12 @@ class _ProfileScreenState extends State<ProfileScreen>
                         child: Text(
                           anime['title'] ?? '',
                           maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+                          overflow:
+                          TextOverflow.ellipsis,
                           textAlign: TextAlign.center,
                           style: const TextStyle(
-                              color: Colors.white, fontSize: 10),
+                              color: Colors.white,
+                              fontSize: 10),
                         ),
                       ),
                     ],
@@ -609,7 +609,8 @@ class _ProfileScreenState extends State<ProfileScreen>
                 fontSize: 20,
                 fontWeight: FontWeight.bold)),
         Text(label,
-            style: const TextStyle(color: Colors.white70)),
+            style:
+            const TextStyle(color: Colors.white70)),
       ],
     );
   }

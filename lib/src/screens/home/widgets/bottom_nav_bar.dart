@@ -2,7 +2,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:amikiyo/src/screens/home/home_screen.dart';
-import 'package:amikiyo/src/screens/groups/group_screen.dart';
+import 'package:amikiyo/src/screens/group/group_list_screen.dart';
 import 'package:amikiyo/src/screens/chat/chat_list_screen.dart';
 import 'package:amikiyo/src/screens/profile/profile_screen.dart';
 
@@ -61,7 +61,7 @@ class BottomNavBar extends StatelessWidget {
             break;
 
           case 1:
-            _switchTab(context, const GroupsScreen());
+            _switchTab(context, const GroupListScreen());
             break;
 
           case 2:

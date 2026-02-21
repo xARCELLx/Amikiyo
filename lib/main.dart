@@ -1,10 +1,11 @@
+import 'package:amikiyo/src/screens/home/home_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 
 import 'src/config/theme.dart';
 import 'src/screens/auth/auth_screen.dart';
-import 'src/screens/home/home_screen.dart';
+import 'src/screens/home/feed_screen.dart';
 import 'src/services/storage_service.dart';
 
 void main() async {

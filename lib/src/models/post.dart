@@ -1,21 +1,31 @@
 class Post {
+  final int id;
   final String username;
   final String profileImage;
-  final String timestamp;
   final String content;
+  final String timestamp;
   final String? imageUrl;
-  final String? videoUrl;
   final int likes;
-  final int comments;
 
   Post({
+    required this.id,
     required this.username,
     required this.profileImage,
-    required this.timestamp,
     required this.content,
+    required this.timestamp,
+    required this.likes,
     this.imageUrl,
-    this.videoUrl,
-    this.likes = 0,
-    this.comments = 0,
   });
+
+  factory Post.fromJson(Map<String, dynamic> json) {
+    return Post(
+      id: json['id'],
+      username: json['author_username'] ?? '',
+      profileImage: json['author_profile_image'] ?? '',
+      content: json['caption'] ?? '',
+      timestamp: json['created_at'] ?? '',
+      imageUrl: json['image'],
+      likes: json['likes_count'] ?? 0,
+    );
+  }
 }

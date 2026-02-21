@@ -4,10 +4,10 @@ import 'package:google_fonts/google_fonts.dart';
 ThemeData appTheme() {
   return ThemeData(
     scaffoldBackgroundColor: const Color(0xFF1E1E1E),
-    primaryColor: const Color(0xFF00FF7F),
+    primaryColor: const Color(0xFF000000),
     colorScheme: const ColorScheme.dark(
-      primary: Color(0xFF00FF7F),
-      secondary: Color(0xAF00FF7F),
+      primary: Color(0xFFFFFF),
+      secondary: Color(0xAFFFFFFF),
     ),
     textTheme: const TextTheme(
       bodyMedium: TextStyle(
@@ -28,21 +28,21 @@ ThemeData appTheme() {
       ),
     ),
     cardTheme: const CardThemeData(
-      color: Color(0xFF1A237E),
+      color: Color(0xFF3C3C3C),
       margin: EdgeInsets.symmetric(vertical: 4, horizontal: 8),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(8))),
     ),
     floatingActionButtonTheme: const FloatingActionButtonThemeData(
-      backgroundColor: Color(0xFF00FF7F),
+      backgroundColor: Color(0xFF4A4949),
       foregroundColor: Colors.white,
     ),
     bottomNavigationBarTheme: const BottomNavigationBarThemeData(
       backgroundColor: Color(0xFF1E1E1E),
-      selectedItemColor: Color(0xFF00FF7F),
+      selectedItemColor: Color(0xFF020000),
       unselectedItemColor: Colors.white,
     ),
     appBarTheme: const AppBarTheme(
-      backgroundColor: Color(0xFF41f943),
+      backgroundColor: Color(0xff000000),
       foregroundColor: Colors.white,
     ),
   );

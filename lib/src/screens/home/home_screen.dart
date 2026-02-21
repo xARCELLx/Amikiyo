@@ -1,36 +1,56 @@
 import 'package:flutter/material.dart';
-import 'package:amikiyo/src/screens/home/widgets/app_bar.dart';
-import 'package:amikiyo/src/screens/home/widgets/bottom_nav_bar.dart';
-import 'package:amikiyo/src/screens/home/widgets/fab.dart';
-import 'widgets/post_card.dart';
-import 'widgets/trending_banner.dart';
-import 'widgets/empty_feed.dart';
-import '../../services/mock_data.dart';
 
-class HomeScreen extends StatelessWidget {
+import '../home/feed_screen.dart';
+import 'widgets/app_bar.dart';
+import 'widgets/bottom_nav_bar.dart';
+
+import 'widgets/trending_banner.dart';
+
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
   @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  final TextEditingController _searchController = TextEditingController();
+
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+
+  // ───────────────── MAIN BUILD ─────────────────
+
+  @override
   Widget build(BuildContext context) {
-    final posts = getMockPosts();
     return Scaffold(
-      appBar: customAppBar(context, title: 'Amikiyo'),
+      backgroundColor: Colors.black,
+
+      // 🔥 AppBar with Search
+      appBar:customAppBar(context, title:'Amikiyo'),
+
+
+      // 🔥 Bottom Navigation
+      bottomNavigationBar: const BottomNavBar(currentIndex: 0),
+
+      // 🔥 Body
       body: Column(
         children: [
+
+          // Trending Banner stays on top
           const TrendingBanner(),
-          Expanded(
-            child: posts.isEmpty
-                ? const EmptyFeed()
-                : ListView.builder(
-              padding: const EdgeInsets.only(top: 8, bottom: 16),
-              itemCount: posts.length,
-              itemBuilder: (context, index) => PostCard(post: posts[index]),
-            ),
+
+          // REAL FEED ENGINE EMBEDDED HERE
+          const Expanded(
+            child: FeedScreen(),
           ),
         ],
       ),
-      floatingActionButton: customFAB(context),
-      bottomNavigationBar: BottomNavBar(currentIndex: 0),
     );
   }
 }
