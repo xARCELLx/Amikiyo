@@ -4,6 +4,7 @@
 // 737 LINES TOTAL
 
 import 'dart:convert';
+import 'dart:io';
 import 'dart:ui';
 
 import 'package:cached_network_image/cached_network_image.dart';
@@ -14,6 +15,8 @@ import '../../services/constants.dart';
 import '../../services/storage_service.dart';
 import '../../services/kitsu_api.dart';
 import '../search/search_screen.dart';
+import 'package:image_picker/image_picker.dart';
+import '../../widgets/anime_search_modal.dart';
 
 class GroupAboutScreen extends StatefulWidget {
   final String groupId;
@@ -359,69 +362,225 @@ class _GroupAboutScreenState extends State<GroupAboutScreen>
   // ───────────────── EDIT GROUP ─────────────────
 
   Future<void> _editGroup() async {
+
     final nameController =
     TextEditingController(text: _group?['name']);
+
     final aboutController =
     TextEditingController(text: _group?['about']);
 
-    final confirmed = await showDialog<bool>(
+    String? animeTitle = _group?['anime_title'];
+    String? animeId = _group?['anime_id'];
+    XFile? pickedImage;
+
+    final result = await showModalBottomSheet<bool>(
       context: context,
-      builder: (_) => AlertDialog(
-        backgroundColor: Colors.grey[900],
-        title:
-        const Text("Edit Group", style: TextStyle(color: Colors.white)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: nameController,
-              style: const TextStyle(color: Colors.white),
-              decoration: const InputDecoration(
-                labelText: "Group Name",
-                labelStyle: TextStyle(color: Colors.white54),
+      isScrollControlled: true,
+      backgroundColor: Colors.black,
+      builder: (_) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return Padding(
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.of(context).viewInsets.bottom,
               ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: aboutController,
-              style: const TextStyle(color: Colors.white),
-              decoration: const InputDecoration(
-                labelText: "About",
-                labelStyle: TextStyle(color: Colors.white54),
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+
+                    const Text(
+                      "Edit Group",
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+
+                    const SizedBox(height: 20),
+
+                    // ───────── IMAGE PICKER ─────────
+
+                    GestureDetector(
+                      onTap: () async {
+                        final picker = ImagePicker();
+                        final image = await picker.pickImage(
+                          source: ImageSource.gallery,
+                          imageQuality: 85,
+                        );
+
+                        if (image != null) {
+                          setModalState(() {
+                            pickedImage = image;
+                          });
+                        }
+                      },
+                      child: CircleAvatar(
+                        radius: 45,
+                        backgroundColor: Colors.grey[900],
+                        backgroundImage: pickedImage != null
+                            ? FileImage(File(pickedImage!.path))
+                            : (_group?['image'] != null
+                            ? NetworkImage(
+                          _buildImageUrl(_group!['image'])!,
+                        )
+                            : null) as ImageProvider?,
+                        child: pickedImage == null &&
+                            _group?['image'] == null
+                            ? const Icon(Icons.camera_alt,
+                            color: Colors.white54)
+                            : null,
+                      ),
+                    ),
+
+                    const SizedBox(height: 20),
+
+                    // ───────── NAME ─────────
+
+                    TextField(
+                      controller: nameController,
+                      style: const TextStyle(color: Colors.white),
+                      decoration: const InputDecoration(
+                        labelText: "Group Name",
+                        labelStyle:
+                        TextStyle(color: Colors.white54),
+                      ),
+                    ),
+
+                    const SizedBox(height: 15),
+
+                    // ───────── ABOUT ─────────
+
+                    TextField(
+                      controller: aboutController,
+                      style: const TextStyle(color: Colors.white),
+                      maxLines: 3,
+                      decoration: const InputDecoration(
+                        labelText: "About",
+                        labelStyle:
+                        TextStyle(color: Colors.white54),
+                      ),
+                    ),
+
+                    const SizedBox(height: 20),
+
+                    // ───────── TAGGED ANIME ─────────
+
+                    ListTile(
+                      title: Text(
+                        animeTitle ?? "No Anime Tagged",
+                        style: const TextStyle(
+                            color: Colors.white),
+                      ),
+                      trailing: const Icon(
+                        Icons.edit,
+                        color: accent,
+                      ),
+                      onTap: () async {
+                        final result =
+                        await Navigator.push<Map<String, dynamic>>(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) =>
+                            const AnimeSearchModal(),
+                          ),
+                        );
+
+                        if (result != null) {
+                          setModalState(() {
+                            animeTitle = result['title'];
+                            animeId = result['id'];
+                          });
+                        }
+                      },
+                    ),
+
+                    const SizedBox(height: 25),
+
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () =>
+                                Navigator.pop(context, false),
+                            child: const Text("Cancel"),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: ElevatedButton(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: accent,
+                            ),
+                            onPressed: () =>
+                                Navigator.pop(context, true),
+                            child: const Text("Save"),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text("Cancel",
-                  style: TextStyle(color: accent))),
-          TextButton(
-              onPressed: () => Navigator.pop(context, true),
-              child:
-              const Text("Save", style: TextStyle(color: accent))),
-        ],
-      ),
+            );
+          },
+        );
+      },
     );
 
-    if (confirmed != true) return;
+    if (result != true) return;
 
     final token = await StorageService.getToken();
 
-    await http.patch(
-      Uri.parse('${ApiConstants.baseUrl}/groups/${widget.groupId}/'),
-      headers: {
-        'Authorization': 'Token $token',
-        'Content-Type': 'application/json'
-      },
-      body: jsonEncode({
-        "name": nameController.text.trim(),
-        "about": aboutController.text.trim(),
-      }),
+    final request = http.MultipartRequest(
+      "PATCH",
+      Uri.parse(
+          '${ApiConstants.baseUrl}/groups/${widget.groupId}/update/'),
     );
 
-    await _loadGroup();
+    request.headers['Authorization'] = 'Token $token';
+
+    request.fields['name'] =
+        nameController.text.trim();
+    request.fields['about'] =
+        aboutController.text.trim();
+
+    if (animeId != null) {
+      request.fields['anime_id'] = animeId!;
+      request.fields['anime_title'] = animeTitle ?? "";
+    }
+
+    if (pickedImage != null) {
+      request.files.add(
+        await http.MultipartFile.fromPath(
+          'image',
+          pickedImage!.path,
+        ),
+      );
+    }
+
+    final response = await request.send();
+    final respStr = await response.stream.bytesToString();
+
+    if (!mounted) return;
+
+    if (response.statusCode == 200) {
+      await _loadGroup();
+    } else {
+      final data = jsonDecode(respStr);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            data['name'] ??
+                data['detail'] ??
+                "Update failed",
+          ),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   // ───────────────── ANIME MODAL ─────────────────
