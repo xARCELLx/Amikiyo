@@ -1,37 +1,87 @@
 // lib/src/screens/chat/chat_screen.dart
+// PRODUCTION CHAT ENGINE — PART 1 (CORE + PAGINATION)
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:ui';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_database/firebase_database.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:http/http.dart' as http;
 
-import '../../config/constants.dart';
 import '../../services/constants.dart';
 import '../../services/storage_service.dart';
 import '../profile/profile_screen.dart';
-import '../profile/post_detail_modal.dart';
-import 'widgets/chat_post_bubble.dart';
 
 enum ChatType { private, group }
 
+/// ─────────────────────────────────────────────────────────────
+/// MESSAGE MODEL
+/// ─────────────────────────────────────────────────────────────
+
+class ChatMessage {
+  final String id;
+  final int senderId;
+  final String type; // text | post
+  final String? content;
+  final int? postId;
+  final int timestamp;
+  final String? replyTo;
+  final bool deletedForEveryone;
+  final Map<String, dynamic>? deletedFor;
+  final Map<String, dynamic>? seenBy;
+
+  ChatMessage({
+    required this.id,
+    required this.senderId,
+    required this.type,
+    required this.timestamp,
+    this.content,
+    this.postId,
+    this.replyTo,
+    this.deletedForEveryone = false,
+    this.deletedFor,
+    this.seenBy,
+  });
+
+  factory ChatMessage.fromSnapshot(DataSnapshot snap) {
+    final data = Map<String, dynamic>.from(snap.value as Map);
+
+    return ChatMessage(
+      id: snap.key!,
+      senderId: data['senderId'] ?? 0,
+      type: data['type'] ?? 'text',
+      content: data['content'],
+      postId: data['postId'],
+      timestamp: data['timestamp'] ?? 0,
+      replyTo: data['replyTo'],
+      deletedForEveryone: data['deletedForEveryone'] ?? false,
+      deletedFor: data['deletedFor'] != null
+          ? Map<String, dynamic>.from(data['deletedFor'])
+          : null,
+      seenBy: data['seenBy'] != null
+          ? Map<String, dynamic>.from(data['seenBy'])
+          : null,
+    );
+  }
+}
+
+/// ─────────────────────────────────────────────────────────────
+/// CHAT SCREEN
+/// ─────────────────────────────────────────────────────────────
+
 class ChatScreen extends StatefulWidget {
   final String chatRoomId;
-  final int? otherUserId;
-  final String? otherUsername;
-
   final ChatType chatType;
+  final int? otherUserId;
   final String? title;
 
   const ChatScreen({
     Key? key,
     required this.chatRoomId,
+    required this.chatType,
     this.otherUserId,
-    this.otherUsername,
-    this.chatType = ChatType.private,
     this.title,
   }) : super(key: key);
 
@@ -40,177 +90,284 @@ class ChatScreen extends StatefulWidget {
 }
 
 class _ChatScreenState extends State<ChatScreen> {
+  /// CONTROLLERS
   final TextEditingController _controller = TextEditingController();
   final ScrollController _scrollController = ScrollController();
 
-  late final DatabaseReference _messagesRef;
+  /// FIREBASE
+  late DatabaseReference _chatRef;
+  Query? _messagesQuery;
+  StreamSubscription<DatabaseEvent>? _childAddedSub;
+  StreamSubscription<DatabaseEvent>? _childChangedSub;
 
-  Map<String, dynamic>? _profileData;
+  /// STATE
+  List<ChatMessage> _messages = [];
+  Map<int, Map<String, dynamic>> _postCache = {};
+  bool _isLoadingMore = false;
+  bool _hasMore = true;
+  int? _oldestTimestamp;
+  ChatMessage? _replyingTo;
 
-  final int myUserId =
-      FirebaseAuth.instance.currentUser!.uid.hashCode;
+  late int myUserId;
+
+  /// PAGINATION CONFIG
+  static const int pageSize = 25;
+
+  /// ───────────────── INIT ─────────────────
 
   @override
   void initState() {
     super.initState();
-    _messagesRef = _buildRef();
-    _loadHeaderData();
+    _initialize();
   }
 
-  DatabaseReference _buildRef() {
-    if (widget.chatType == ChatType.private) {
-      return FirebaseDatabase.instance
-          .ref('chats/${widget.chatRoomId}/messages');
-    } else {
-      return FirebaseDatabase.instance
-          .ref('group_chats/${widget.chatRoomId}/messages');
+  Future<void> _initialize() async {
+    if (widget.chatType == ChatType.group) {
+      final token = await StorageService.getToken();
+
+      final res = await http.post(
+        Uri.parse(
+            '${ApiConstants.baseUrl}/groups/${widget.chatRoomId}/validate-membership/'),
+        headers: {'Authorization': 'Token $token'},
+      );
+
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        if (data['allowed'] != true) {
+          if (mounted) Navigator.pop(context);
+          return;
+        }
+      }
+    }
+    myUserId = await StorageService.getUserId() ?? 0;
+
+    _chatRef =
+        FirebaseDatabase.instance.ref('chats/${widget.chatRoomId}');
+
+    await _ensureChatMetadata();
+
+    _setupInitialQuery();
+
+    _scrollController.addListener(_handleScroll);
+  }
+
+  /// Ensure chat root exists
+  Future<void> _ensureChatMetadata() async {
+    final snap = await _chatRef.get();
+
+    if (!snap.exists) {
+      await _chatRef.set({
+        "type": widget.chatType.name,
+        "createdAt": ServerValue.timestamp,
+      });
     }
   }
 
-  Future<void> _loadHeaderData() async {
-    try {
-      final token = await StorageService.getToken();
-      if (token == null) return;
+  /// ───────────────── INITIAL QUERY ─────────────────
 
-      if (widget.chatType == ChatType.private &&
-          widget.otherUserId != null) {
-        final res = await http.get(
-          Uri.parse(
-              '${ApiConstants.baseUrl}/profiles/${widget.otherUserId}/'),
-          headers: {'Authorization': 'Token $token'},
-        );
+  void _setupInitialQuery() {
+    _messagesQuery = _chatRef
+        .child('messages')
+        .orderByChild('timestamp')
+        .limitToLast(pageSize);
 
-        if (res.statusCode == 200) {
-          setState(() {
-            _profileData =
-            Map<String, dynamic>.from(jsonDecode(res.body));
-          });
-        }
-      } else {
-        final res = await http.get(
-          Uri.parse(
-              '${ApiConstants.baseUrl}/groups/${widget.chatRoomId}/'),
-          headers: {'Authorization': 'Token $token'},
-        );
+    _childAddedSub =
+        _messagesQuery!.onChildAdded.listen(_onMessageAdded);
 
-        if (res.statusCode == 200) {
-          setState(() {
-            _profileData =
-            Map<String, dynamic>.from(jsonDecode(res.body));
-          });
-        }
-      }
-    } catch (_) {}
+    _childChangedSub =
+        _chatRef.child('messages').onChildChanged.listen(_onMessageChanged);
   }
 
-  void _showImagePreview() {
-    if (_profileData == null) return;
+  void _onMessageAdded(DatabaseEvent event) {
+    final message = ChatMessage.fromSnapshot(event.snapshot);
 
-    final imageUrl = widget.chatType == ChatType.private
-        ? _profileData!['profile_image']
-        : _profileData!['image'];
+    if (_messages.any((m) => m.id == message.id)) return;
 
-    if (imageUrl == null) return;
+    setState(() {
+      _messages.add(message);
+      _messages.sort((a, b) => a.timestamp.compareTo(b.timestamp));
+    });
 
-    showDialog(
+    _oldestTimestamp ??= message.timestamp;
+
+    if (_messages.length < pageSize) {
+      _hasMore = false;
+    }
+    if (widget.chatType == ChatType.private &&
+        message.senderId != myUserId) {
+      _chatRef
+          .child('messages/${message.id}/seenBy/$myUserId')
+          .set(true);
+    }
+
+    _scrollToBottom();
+  }
+
+  void _onMessageChanged(DatabaseEvent event) {
+    final updated = ChatMessage.fromSnapshot(event.snapshot);
+
+    final index = _messages.indexWhere((m) => m.id == updated.id);
+
+    if (index != -1) {
+      setState(() {
+        _messages[index] = updated;
+      });
+    }
+  }
+
+  /// ───────────────── PAGINATION ─────────────────
+
+  void _handleScroll() {
+    if (_scrollController.position.pixels <= 100 &&
+        !_isLoadingMore &&
+        _hasMore) {
+      _loadMore();
+    }
+  }
+
+  Future<void> _loadMore() async {
+    if (_oldestTimestamp == null) return;
+
+    setState(() => _isLoadingMore = true);
+
+    final query = _chatRef
+        .child('messages')
+        .orderByChild('timestamp')
+        .endAt(_oldestTimestamp! - 1)
+        .limitToLast(pageSize);
+
+    final snap = await query.get();
+
+    if (!snap.exists || snap.value == null) {
+      _hasMore = false;
+      setState(() => _isLoadingMore = false);
+      return;
+    }
+
+    final raw = Map<String, dynamic>.from(snap.value as Map);
+
+    final List<ChatMessage> olderMessages = [];
+
+    raw.forEach((key, value) {
+      final data = Map<String, dynamic>.from(value);
+
+      olderMessages.add(
+        ChatMessage(
+          id: key,
+          senderId: data['senderId'] ?? 0,
+          type: data['type'] ?? 'text',
+          content: data['content'],
+          postId: data['postId'],
+          timestamp: data['timestamp'] ?? 0,
+          replyTo: data['replyTo'],
+          deletedForEveryone: data['deletedForEveryone'] ?? false,
+          deletedFor: data['deletedFor'] != null
+              ? Map<String, dynamic>.from(data['deletedFor'])
+              : null,
+          seenBy: data['seenBy'] != null
+              ? Map<String, dynamic>.from(data['seenBy'])
+              : null,
+        ),
+      );
+    });
+
+    olderMessages.sort((a, b) => a.timestamp.compareTo(b.timestamp));
+
+    setState(() {
+      _messages.insertAll(0, olderMessages);
+      _oldestTimestamp = _messages.first.timestamp;
+      _isLoadingMore = false;
+    });
+  }
+
+  /// ───────────────── SEND TEXT ─────────────────
+
+  Future<void> _sendMessage() async {
+    final text = _controller.text.trim();
+    if (text.isEmpty) return;
+
+    final msgRef = _chatRef.child('messages').push();
+
+    await msgRef.set({
+      "senderId": myUserId,
+      "type": "text",
+      "content": text,
+      "timestamp": ServerValue.timestamp,
+      "replyTo": _replyingTo?.id,
+      "deletedForEveryone": false,
+    });
+
+    _controller.clear();
+    _cancelReply();
+  }
+
+  void _setReply(ChatMessage message) {
+    setState(() {
+      _replyingTo = message;
+    });
+  }
+
+  void _cancelReply() {
+    setState(() {
+      _replyingTo = null;
+    });
+  }
+  Future<void> _deleteForMe(ChatMessage message) async {
+    await _chatRef
+        .child('messages/${message.id}/deletedFor/$myUserId')
+        .set(true);
+  }
+
+  Future<void> _deleteForEveryone(ChatMessage message) async {
+    await _chatRef
+        .child('messages/${message.id}')
+        .update({
+      "deletedForEveryone": true,
+    });
+  }
+
+  void _showMessageOptions(ChatMessage message) {
+    final isMe = message.senderId == myUserId;
+
+    showModalBottomSheet(
       context: context,
-      barrierColor: Colors.black54,
+      backgroundColor: Colors.black,
       builder: (_) {
-        List<Widget> children = [];
-
-        children.add(
-          ClipRRect(
-            borderRadius: BorderRadius.circular(16),
-            child: CachedNetworkImage(
-              imageUrl: imageUrl,
-              width: double.infinity,
-              height: 300,
-              fit: BoxFit.cover,
-            ),
-          ),
-        );
-
-        children.add(const SizedBox(height: 14));
-
-        children.add(
-          Text(
-            widget.title ??
-                widget.otherUsername ??
-                'Profile',
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 22,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-        );
-
-        if (widget.chatType == ChatType.private) {
-          children.add(const SizedBox(height: 12));
-
-          children.add(
-            IconButton(
-              icon: const Icon(
-                Icons.person,
-                color: Color(0xFF00FF7F),
-                size: 32,
-              ),
-              onPressed: () {
-                Navigator.pop(context);
-
-                if (widget.otherUserId != null) {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) =>
-                          ProfileScreen(
-                            userId: widget.otherUserId!,
-                          ),
-                    ),
-                  );
-                }
-              },
-            ),
-          );
-        }
-
-        return Dialog(
-          backgroundColor: Colors.transparent,
-          insetPadding: const EdgeInsets.all(16),
-          child: Stack(
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              BackdropFilter(
-                filter: ImageFilter.blur(
-                    sigmaX: 6, sigmaY: 6),
-                child: Container(
-                  color:
-                  Colors.black.withOpacity(0.5),
-                ),
+              ListTile(
+                leading: const Icon(Icons.reply,
+                    color: Color(0xFF00FF7F)),
+                title: const Text("Reply",
+                    style: TextStyle(color: Colors.white)),
+                onTap: () {
+                  Navigator.pop(context);
+                  _setReply(message);
+                },
               ),
-              Center(
-                child: Container(
-                  width: MediaQuery.of(context)
-                      .size
-                      .width *
-                      0.85,
-                  padding:
-                  const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.black,
-                    borderRadius:
-                    BorderRadius.circular(20),
-                    border: Border.all(
-                      color:
-                      const Color(0xFF00FF7F),
-                      width: 1.5,
-                    ),
-                  ),
-                  child: Column(
-                    mainAxisSize:
-                    MainAxisSize.min,
-                    children: children,
-                  ),
+              if (isMe || widget.chatType == ChatType.group)
+                ListTile(
+                  leading: const Icon(Icons.delete,
+                      color: Colors.red),
+                  title: const Text("Delete for everyone",
+                      style: TextStyle(color: Colors.white)),
+                  onTap: () async {
+                    Navigator.pop(context);
+                    await _deleteForEveryone(message);
+                  },
                 ),
+              ListTile(
+                leading:
+                const Icon(Icons.delete_outline,
+                    color: Colors.white70),
+                title: const Text("Delete for me",
+                    style: TextStyle(color: Colors.white)),
+                onTap: () async {
+                  Navigator.pop(context);
+                  await _deleteForMe(message);
+                },
               ),
             ],
           ),
@@ -219,296 +376,332 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  void _sendMessage() {
-    final text = _controller.text.trim();
-    if (text.isEmpty) return;
+  Future<void> _fetchPost(int postId) async {
+    if (_postCache.containsKey(postId)) return;
 
-    _messagesRef.push().set({
-      'type': 'text',
-      'senderId': myUserId,
-      'text': text,
-      'timestamp': ServerValue.timestamp,
-    });
+    try {
+      final token = await StorageService.getToken();
+      if (token == null) return;
 
-    _controller.clear();
-    _scrollToBottom();
-  }
+      final res = await http.get(
+        Uri.parse('${ApiConstants.baseUrl}/posts/$postId/detail/'),
+        headers: {'Authorization': 'Token $token'},
+      );
 
-  void _scrollToBottom() {
-    Future.delayed(
-        const Duration(milliseconds: 150),
-            () {
-          if (_scrollController.hasClients) {
-            _scrollController.animateTo(
-              _scrollController
-                  .position.maxScrollExtent,
-              duration:
-              const Duration(milliseconds: 250),
-              curve: Curves.easeOut,
-            );
-          }
+      if (res.statusCode == 200) {
+        setState(() {
+          _postCache[postId] =
+          Map<String, dynamic>.from(jsonDecode(res.body));
         });
+      }
+    } catch (_) {}
   }
+
+  /// ───────────────── UI ─────────────────
 
   @override
   Widget build(BuildContext context) {
-    String? imageUrl;
-
-    if (_profileData != null) {
-      if (widget.chatType == ChatType.private) {
-        imageUrl = _profileData!['profile_image'];
-      } else {
-        imageUrl = _profileData!['image'];
-      }
-    }
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
         backgroundColor: Colors.black,
-        titleSpacing: 0,
-        title: Row(
-          children: [
-            GestureDetector(
-              onTap: _showImagePreview,
-              child: CircleAvatar(
-                radius: 22,
-                backgroundColor:
-                Colors.grey[800],
-                backgroundImage:
-                imageUrl != null
-                    ? CachedNetworkImageProvider(
-                    imageUrl)
-                    : null,
-                child: imageUrl == null
-                    ? const Icon(Icons.person,
-                    color:
-                    Colors.white54)
-                    : null,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                widget.title ??
-                    widget.otherUsername ??
-                    'Chat',
-                style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight:
-                    FontWeight.w600),
-                overflow:
-                TextOverflow.ellipsis,
-              ),
-            ),
-          ],
+        title: Text(
+          widget.title ?? "Chat",
+          style: const TextStyle(color: Colors.white),
         ),
       ),
       body: Column(
         children: [
           Expanded(
-            child:
-            StreamBuilder<DatabaseEvent>(
-              stream: _messagesRef.onValue,
-              builder:
-                  (context, snapshot) {
-                if (!snapshot.hasData ||
-                    snapshot.data!
-                        .snapshot.value ==
-                        null) {
-                  return const Center(
-                    child: Text(
-                      'No messages yet',
-                      style: TextStyle(
-                          color:
-                          Colors.white54),
-                    ),
-                  );
+            child: ListView.builder(
+              controller: _scrollController,
+              itemCount: _messages.length,
+              itemBuilder: (_, i) {
+                final msg = _messages[i];
+                final isMe = msg.senderId == myUserId;
+
+                if (msg.deletedForEveryone) {
+                  return _deletedBubble();
                 }
 
-                final raw =
-                snapshot.data!
-                    .snapshot.value
-                as Map<dynamic,
-                    dynamic>;
+                if (msg.deletedFor != null &&
+                    msg.deletedFor![myUserId.toString()] == true) {
+                  return const SizedBox();
+                }
 
-                final messages = raw.values
-                    .map<
-                    Map<String,
-                        dynamic>>(
-                        (e) =>
-                    Map<String,
-                        dynamic>.from(
-                        e))
-                    .toList()
-                  ..sort((a, b) =>
-                      (a['timestamp'] ??
-                          0)
-                          .compareTo(
-                          b['timestamp'] ??
-                              0));
+                if (msg.type == 'text') {
+                  return _textBubble(msg, isMe);
+                }
 
-                _scrollToBottom();
+                if (msg.type == 'post' && msg.postId != null) {
+                  _fetchPost(msg.postId!);
 
-                return ListView.builder(
-                  controller:
-                  _scrollController,
-                  itemCount:
-                  messages.length,
-                  itemBuilder:
-                      (_, i) {
-                    final msg =
-                    messages[i];
-                    final bool isMe =
-                        msg['senderId'] ==
-                            myUserId;
+                  final post = _postCache[msg.postId!];
 
-                    if (msg['type'] ==
-                        'post' &&
-                        msg['post'] !=
-                            null) {
-                      final post =
-                      Map<String,
-                          dynamic>.from(
-                          msg['post']);
+                  if (post == null) {
+                    return const Padding(
+                      padding: EdgeInsets.all(12),
+                      child: CircularProgressIndicator(
+                        color: Color(0xFF00FF7F),
+                      ),
+                    );
+                  }
 
-                      return ChatPostBubble(
-                        postPreview:
-                        post,
-                        isMe: isMe,
-                        onTap: () {
-                          showModalBottomSheet(
-                            context:
-                            context,
-                            isScrollControlled:
-                            true,
-                            backgroundColor:
-                            Colors
-                                .transparent,
-                            builder:
-                                (_) =>
-                                PostDetailModal(
-                                  post:
-                                  post,
-                                  heroTag:
-                                  'chat_post_${post['id']}',
-                                ),
-                          );
-                        },
-                      );
-                    }
+                  return _postBubble(post, isMe, msg);
+                }
 
-                    return _textBubble(
-                        msg['text']
-                            ?.toString() ??
-                            '',
-                        isMe);
-                  },
-                );
+                return const SizedBox();
               },
             ),
           ),
-          Container(
-            padding:
-            const EdgeInsets.symmetric(
-                horizontal: 8,
-                vertical: 6),
-            color: Colors.black,
-            child: Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller:
-                    _controller,
-                    style: const TextStyle(
-                        color:
-                        Colors.white),
-                    decoration:
-                    InputDecoration(
-                      hintText:
-                      'Type a message...',
-                      hintStyle:
-                      const TextStyle(
-                          color: Colors
-                              .white54),
-                      filled: true,
-                      fillColor:
-                      Colors.grey[900],
-                      border:
-                      OutlineInputBorder(
-                        borderRadius:
-                        BorderRadius
-                            .circular(
-                            20),
-                        borderSide:
-                        BorderSide
-                            .none,
-                      ),
-                      contentPadding:
-                      const EdgeInsets
-                          .symmetric(
-                        horizontal:
-                        16,
-                        vertical:
-                        10,
-                      ),
-                    ),
-                  ),
-                ),
-                IconButton(
-                  icon: const Icon(
-                    Icons.send,
-                    color: Color(
-                        0xFF00FF7F),
-                  ),
-                  onPressed:
-                  _sendMessage,
-                ),
-              ],
-            ),
-          ),
+          _inputBar(),
         ],
       ),
     );
   }
 
-  Widget _textBubble(
-      String text, bool isMe) {
-    return Align(
-      alignment: isMe
-          ? Alignment.centerRight
-          : Alignment.centerLeft,
-      child: Container(
-        margin:
-        const EdgeInsets.symmetric(
-            vertical: 4,
-            horizontal: 8),
-        padding:
-        const EdgeInsets.all(12),
-        constraints: BoxConstraints(
-          maxWidth:
-          MediaQuery.of(context)
-              .size
-              .width *
-              0.75,
-        ),
-        decoration: BoxDecoration(
-          color: isMe
-              ? const Color(
-              0xFF00FF7F)
-              : Colors.grey[800],
-          borderRadius:
-          BorderRadius.circular(
-              10),
-        ),
-        child: Text(
-          text,
-          style: TextStyle(
+  Widget _postBubble(
+      Map<String, dynamic> post,
+      bool isMe,
+      ChatMessage message,
+      ) {
+    return GestureDetector(
+      onLongPress: () => _showMessageOptions(message),
+      child: Align(
+        alignment:
+        isMe ? Alignment.centerRight : Alignment.centerLeft,
+        child: Container(
+          margin: const EdgeInsets.symmetric(
+              horizontal: 10, vertical: 6),
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
             color: isMe
-                ? Colors.black
-                : Colors.white,
+                ? const Color(0xFF00FF7F)
+                : Colors.grey[800],
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (message.replyTo != null)
+                _buildReplyPreview(message.replyTo!),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: CachedNetworkImage(
+                  imageUrl: post['image'],
+                  width: 200,
+                  height: 200,
+                  fit: BoxFit.cover,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                post['caption'] ?? '',
+                style: TextStyle(
+                  color: isMe ? Colors.black : Colors.white,
+                ),
+              ),
+            ],
           ),
         ),
       ),
     );
+  }
+
+  Widget _buildReplyPreview(String replyId) {
+    final repliedMessage =
+    _messages.firstWhere(
+          (m) => m.id == replyId,
+      orElse: () => ChatMessage(
+        id: '',
+        senderId: 0,
+        type: 'text',
+        timestamp: 0,
+        content: 'Message unavailable',
+      ),
+    );
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 6),
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: Colors.black.withOpacity(0.2),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(
+        repliedMessage.content ?? '',
+        style: const TextStyle(
+          fontSize: 12,
+          color: Colors.white70,
+        ),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
+    );
+  }
+
+  Widget _textBubble(ChatMessage message, bool isMe) {
+    final text = message.content ?? '';
+
+    if (message.deletedForEveryone) {
+      return _deletedBubble();
+    }
+
+    if (message.deletedFor != null &&
+        message.deletedFor![myUserId.toString()] == true) {
+      return const SizedBox();
+    }
+
+    return GestureDetector(
+      onLongPress: () => _showMessageOptions(message),
+      child: Align(
+        alignment:
+        isMe ? Alignment.centerRight : Alignment.centerLeft,
+        child: Container(
+          margin:
+          const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          padding: const EdgeInsets.all(12),
+          constraints: BoxConstraints(
+              maxWidth:
+              MediaQuery.of(context).size.width * 0.75),
+          decoration: BoxDecoration(
+            color: isMe
+                ? const Color(0xFF00FF7F)
+                : Colors.grey[800],
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (message.replyTo != null)
+                _buildReplyPreview(message.replyTo!),
+              Text(
+                text,
+                style: TextStyle(
+                  color: isMe ? Colors.black : Colors.white,
+                ),
+              ),
+              if (isMe && widget.chatType == ChatType.private)
+                Align(
+                  alignment: Alignment.bottomRight,
+                  child: Text(
+                    message.seenBy != null &&
+                        message.seenBy!.length > 1
+                        ? "✓✓"
+                        : "✓",
+                    style: const TextStyle(
+                        fontSize: 10, color: Colors.white70),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _deletedBubble() {
+    return const Padding(
+      padding: EdgeInsets.symmetric(vertical: 6),
+      child: Center(
+        child: Text(
+          "Message deleted",
+          style: TextStyle(
+            color: Colors.white38,
+            fontStyle: FontStyle.italic,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _inputBar() {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (_replyingTo != null)
+          Container(
+            color: Colors.grey[900],
+            padding: const EdgeInsets.symmetric(
+                horizontal: 12, vertical: 8),
+            child: Row(
+              children: [
+                const Icon(Icons.reply,
+                    size: 16,
+                    color: Color(0xFF00FF7F)),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    _replyingTo!.content ?? '',
+                    style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 13),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close,
+                      color: Colors.white54),
+                  onPressed: _cancelReply,
+                )
+              ],
+            ),
+          ),
+        Container(
+          padding: const EdgeInsets.symmetric(
+              horizontal: 10, vertical: 6),
+          color: Colors.black,
+          child: Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _controller,
+                  style:
+                  const TextStyle(color: Colors.white),
+                  decoration: InputDecoration(
+                    hintText: "Type message...",
+                    hintStyle: const TextStyle(
+                        color: Colors.white54),
+                    filled: true,
+                    fillColor: Colors.grey[900],
+                    border: OutlineInputBorder(
+                      borderRadius:
+                      BorderRadius.circular(20),
+                      borderSide: BorderSide.none,
+                    ),
+                  ),
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.send,
+                    color: Color(0xFF00FF7F)),
+                onPressed: _sendMessage,
+              )
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  void _scrollToBottom() {
+    Future.delayed(const Duration(milliseconds: 200), () {
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _childAddedSub?.cancel();
+    _childChangedSub?.cancel();
+    _scrollController.dispose();
+    super.dispose();
   }
 }

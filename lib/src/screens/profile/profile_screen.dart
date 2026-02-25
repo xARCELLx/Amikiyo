@@ -187,8 +187,9 @@ class _ProfileScreenState extends State<ProfileScreen>
         MaterialPageRoute(
           builder: (_) => ChatScreen(
             chatRoomId: data['id'],
+            chatType: ChatType.private,
             otherUserId: data['other_user']['id'],
-            otherUsername: data['other_user']['username'],
+            title: data['other_user']['username'],
           ),
         ),
       );

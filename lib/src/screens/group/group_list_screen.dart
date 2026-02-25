@@ -309,12 +309,13 @@ class _GroupListScreenState extends State<GroupListScreen> {
           onTap: () {
             Navigator.push(
               context,
-              MaterialPageRoute(
-                builder: (_) => ChatScreen(
-                  chatRoomId: group['id'],
-                  title: group['name'],
+                MaterialPageRoute(
+                  builder: (_) => ChatScreen(
+                    chatRoomId: group['id'],
+                    chatType: ChatType.group,
+                    title: group['name'],
+                  ),
                 ),
-              ),
             );
           },
         );

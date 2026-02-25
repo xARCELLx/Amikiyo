@@ -245,11 +245,12 @@ class _ChatListScreenState extends State<ChatListScreen> {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (_) => ChatScreen(
-                              chatRoomId: chatId,
-                              otherUsername: username,
-                              otherUserId: otherUserId,
-                            ),
+                              builder: (_) => ChatScreen(
+                                chatRoomId: chatId,
+                                chatType: ChatType.private,
+                                otherUserId: otherUserId,
+                                title: username,
+                              ),
                           ),
                         );
                       },
