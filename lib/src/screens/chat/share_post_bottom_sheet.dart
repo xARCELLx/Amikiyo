@@ -103,10 +103,11 @@ class _SharePostBottomSheetState extends State<SharePostBottomSheet> {
     try {
       final token = await StorageService.getToken();
       final myId = await StorageService.getUserId();
+      final myUsername = await StorageService.getUsername();
 
       if (token == null || myId == null) return;
 
-      // 🔥 SAME LOGIC AS MESSAGE BUTTON
+      // 1️⃣ Get or create private chat room
       final res = await http.post(
         Uri.parse('${ApiConstants.baseUrl}/chat/get-or-create/'),
         headers: {
@@ -118,33 +119,27 @@ class _SharePostBottomSheetState extends State<SharePostBottomSheet> {
         }),
       );
 
-      if (res.statusCode != 200) return;
+      if (res.statusCode != 200) {
+        debugPrint("Chat creation failed");
+        return;
+      }
 
       final data = jsonDecode(res.body);
       final String chatRoomId = data['id'];
 
-      final db = FirebaseDatabase.instance
-          .ref('chats/$chatRoomId/messages');
+      // 2️⃣ Push NEW ARCHITECTURE message to Firebase
+      final messageRef = FirebaseDatabase.instance
+          .ref('chats/$chatRoomId/messages')
+          .push();
 
-      await db.push().set({
-        'type': 'post',
-        'senderId': myId,
-        'timestamp': ServerValue.timestamp,
-
-        // 🔥 POST SNAPSHOT (FULL)
-        'post': {
-          'id': widget.post['id'],
-          'image': widget.post['image'],
-          'caption': widget.post['caption'],
-          'anime_title': widget.post['anime_title'],
-          'created_at': widget.post['created_at'],
-          'privacy': widget.post['privacy'],
-          'author_user_id': widget.post['author_user_id'],
-          'author_username': widget.post['author_username'],
-          'likes_count': widget.post['likes_count'] ?? 0,
-          'comments_count': widget.post['comments_count'] ?? 0,
-          'is_liked': widget.post['is_liked'] ?? false,
-        },
+      await messageRef.set({
+        "type": "post",
+        "senderId": myId,
+        "senderUsername": myUsername ?? "",   // 🔥 NEW
+        "postId": widget.post['id'],          // 🔥 ONLY ID
+        "timestamp": ServerValue.timestamp,
+        "replyTo": null,
+        "deletedForEveryone": false,
       });
 
       if (mounted) Navigator.pop(context);

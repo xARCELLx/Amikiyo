@@ -21,6 +21,7 @@ enum ChatType { private, group }
 /// ─────────────────────────────────────────────────────────────
 
 class ChatMessage {
+  final String? senderUsername;
   final String id;
   final int senderId;
   final String type; // text | post
@@ -43,6 +44,7 @@ class ChatMessage {
     this.deletedForEveryone = false,
     this.deletedFor,
     this.seenBy,
+    this.senderUsername,
   });
 
   factory ChatMessage.fromSnapshot(DataSnapshot snap) {
@@ -51,6 +53,7 @@ class ChatMessage {
     return ChatMessage(
       id: snap.key!,
       senderId: data['senderId'] ?? 0,
+      senderUsername: data['senderUsername'],
       type: data['type'] ?? 'text',
       content: data['content'],
       postId: data['postId'],
@@ -112,6 +115,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   /// PAGINATION CONFIG
   static const int pageSize = 25;
+  bool _isCurrentUserAdmin = false;
 
   /// ───────────────── INIT ─────────────────
 
@@ -127,9 +131,12 @@ class _ChatScreenState extends State<ChatScreen> {
 
       final res = await http.post(
         Uri.parse(
-            '${ApiConstants.baseUrl}/groups/${widget.chatRoomId}/validate-membership/'),
+            '${ApiConstants.baseUrl}/groups/${widget.chatRoomId}/validate/'),
         headers: {'Authorization': 'Token $token'},
       );
+      if (widget.chatType == ChatType.group) {
+        await _loadAdminStatus();
+      }
 
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
@@ -149,6 +156,34 @@ class _ChatScreenState extends State<ChatScreen> {
     _setupInitialQuery();
 
     _scrollController.addListener(_handleScroll);
+  }
+  Future<void> _loadAdminStatus() async {
+    try {
+      final token = await StorageService.getToken();
+      if (token == null) return;
+
+      final res = await http.get(
+        Uri.parse(
+            '${ApiConstants.baseUrl}/groups/${widget.chatRoomId}/'),
+        headers: {'Authorization': 'Token $token'},
+      );
+
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+
+        final members = data['members'] ?? [];
+
+        for (final m in members) {
+          if (m['user_id'] == myUserId &&
+              m['role'] == 'admin') {
+            setState(() {
+              _isCurrentUserAdmin = true;
+            });
+            break;
+          }
+        }
+      }
+    } catch (_) {}
   }
 
   /// Ensure chat root exists
@@ -255,6 +290,7 @@ class _ChatScreenState extends State<ChatScreen> {
         ChatMessage(
           id: key,
           senderId: data['senderId'] ?? 0,
+          senderUsername: data['senderUsername'],
           type: data['type'] ?? 'text',
           content: data['content'],
           postId: data['postId'],
@@ -288,8 +324,13 @@ class _ChatScreenState extends State<ChatScreen> {
 
     final msgRef = _chatRef.child('messages').push();
 
+    final myUsername = widget.chatType == ChatType.private
+        ? widget.title ?? ''
+        : await StorageService.getUsername(); // if you have it
+
     await msgRef.set({
       "senderId": myUserId,
+      "senderUsername": myUsername,
       "type": "text",
       "content": text,
       "timestamp": ServerValue.timestamp,
@@ -347,7 +388,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   _setReply(message);
                 },
               ),
-              if (isMe || widget.chatType == ChatType.group)
+              if (isMe || (widget.chatType == ChatType.group && _isCurrentUserAdmin))
                 ListTile(
                   leading: const Icon(Icons.delete,
                       color: Colors.red),
@@ -485,6 +526,21 @@ class _ChatScreenState extends State<ChatScreen> {
             children: [
               if (message.replyTo != null)
                 _buildReplyPreview(message.replyTo!),
+              if (widget.chatType == ChatType.group || !isMe)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Text(
+                    message.senderUsername ?? "User",
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                      color: isMe
+                          ? Colors.black.withOpacity(0.7)
+                          : const Color(0xFF00FF7F),
+                    ),
+                  ),
+                ),
+
               ClipRRect(
                 borderRadius: BorderRadius.circular(8),
                 child: CachedNetworkImage(
@@ -543,10 +599,12 @@ class _ChatScreenState extends State<ChatScreen> {
   Widget _textBubble(ChatMessage message, bool isMe) {
     final text = message.content ?? '';
 
+    // 🔥 Deleted for everyone
     if (message.deletedForEveryone) {
       return _deletedBubble();
     }
 
+    // 🔥 Deleted for me
     if (message.deletedFor != null &&
         message.deletedFor![myUserId.toString()] == true) {
       return const SizedBox();
@@ -573,24 +631,55 @@ class _ChatScreenState extends State<ChatScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+
+              // 🔥 REPLY PREVIEW
               if (message.replyTo != null)
                 _buildReplyPreview(message.replyTo!),
+
+              // 🔥 USERNAME (Group OR Private Other User)
+              if (widget.chatType == ChatType.group || !isMe)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Text(
+                    message.senderUsername ?? "User",
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                      color: isMe
+                          ? Colors.black.withOpacity(0.7)
+                          : const Color(0xFF00FF7F),
+                    ),
+                  ),
+                ),
+
+              // 🔥 MESSAGE TEXT
               Text(
                 text,
                 style: TextStyle(
                   color: isMe ? Colors.black : Colors.white,
                 ),
               ),
+
+              // 🔥 READ RECEIPT (PRIVATE CHAT ONLY)
               if (isMe && widget.chatType == ChatType.private)
                 Align(
                   alignment: Alignment.bottomRight,
-                  child: Text(
-                    message.seenBy != null &&
-                        message.seenBy!.length > 1
-                        ? "✓✓"
-                        : "✓",
-                    style: const TextStyle(
-                        fontSize: 10, color: Colors.white70),
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(
+                      (
+                          message.seenBy != null &&
+                              widget.otherUserId != null &&
+                              message.seenBy![
+                              widget.otherUserId.toString()] == true
+                      )
+                          ? "✓✓"
+                          : "✓",
+                      style: const TextStyle(
+                        fontSize: 15,
+                        color: Colors.blue,
+                      ),
+                    ),
                   ),
                 ),
             ],
