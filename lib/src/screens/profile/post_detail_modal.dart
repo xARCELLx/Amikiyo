@@ -11,6 +11,7 @@ import '../../config/constants.dart';
 import '../../services/constants.dart';
 import '../../services/storage_service.dart';
 import '../../services/kitsu_api.dart';
+import 'profile_screen.dart';
 
 // 👇 REQUIRED: your existing comments bottom sheet
 import '../chat/share_post_bottom_sheet.dart';
@@ -292,6 +293,7 @@ class _PostDetailModalState extends State<PostDetailModal> {
           children: [
             _buildHeader(),
             _buildImageWithActions(imageUrl),
+            _buildAuthorTile(),
             _buildFooter(caption, animeTitle, date),
           ],
         ),
@@ -430,6 +432,61 @@ class _PostDetailModalState extends State<PostDetailModal> {
             ),
           ),
         ],
+      ),
+    );
+  }
+  Widget _buildAuthorTile() {
+    final username = _post['author_username'] ?? 'User';
+    final profileImage = _post['author_pfp'];
+    final authorUserId = _post['author_user_id'];
+
+    return GestureDetector(
+      onTap: () async {
+        final myId = await StorageService.getUserId();
+
+        Navigator.of(context, rootNavigator: true).pop();
+        // 👆 Close the modal first
+
+        if (!mounted) return;
+
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => ProfileScreen(
+              userId: (myId == authorUserId) ? null : authorUserId,
+            ),
+          ),
+        );
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        color: Colors.black,
+        child: Row(
+          children: [
+            CircleAvatar(
+              radius: 22,
+              backgroundColor: Colors.grey[800],
+              backgroundImage: (profileImage != null &&
+                  profileImage.toString().startsWith('http'))
+                  ? CachedNetworkImageProvider(profileImage)
+                  : null,
+              child: profileImage == null
+                  ? const Icon(Icons.person, color: Colors.white54)
+                  : null,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                username,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

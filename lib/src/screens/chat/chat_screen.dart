@@ -5,7 +5,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:ui';
 
-import 'package:cached_network_image/cached_network_image.dart';
+
 import 'package:flutter/material.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:http/http.dart' as http;
@@ -13,7 +13,8 @@ import 'package:http/http.dart' as http;
 import '../../services/constants.dart';
 import '../../services/storage_service.dart';
 import '../profile/profile_screen.dart';
-
+import 'widgets/chat_post_bubble.dart';
+import '../profile/post_detail_modal.dart';
 enum ChatType { private, group }
 
 /// ─────────────────────────────────────────────────────────────
@@ -488,7 +489,40 @@ class _ChatScreenState extends State<ChatScreen> {
                     );
                   }
 
-                  return _postBubble(post, isMe, msg);
+                  return GestureDetector(
+                    onLongPress: () => _showMessageOptions(msg),
+                    onTap: () {
+                    showModalBottomSheet(
+                      context: context,
+                      isScrollControlled: true,
+                      backgroundColor: Colors.transparent,
+                      builder: (_) => PostDetailModal(
+                        post: post,
+                        heroTag: "chat_post_${msg.postId}",
+                      ),
+                    );
+                  },
+                      child: ChatPostBubble(
+                        post: post,
+                        isMe: isMe,
+                        senderUsername:
+                        (widget.chatType == ChatType.group || !isMe)
+                            ? msg.senderUsername
+                            : null,
+                        replyPreview: msg.replyTo != null
+                            ? _buildReplyPreview(msg.replyTo!)
+                            : null,
+
+                        // 🔥 READ RECEIPT LOGIC
+                        showReadReceipt:
+                        isMe && widget.chatType == ChatType.private,
+
+                        isSeen:
+                        msg.seenBy != null &&
+                            widget.otherUserId != null &&
+                            msg.seenBy![widget.otherUserId.toString()] == true,
+                      ),
+                  );
                 }
 
                 return const SizedBox();
@@ -501,68 +535,7 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  Widget _postBubble(
-      Map<String, dynamic> post,
-      bool isMe,
-      ChatMessage message,
-      ) {
-    return GestureDetector(
-      onLongPress: () => _showMessageOptions(message),
-      child: Align(
-        alignment:
-        isMe ? Alignment.centerRight : Alignment.centerLeft,
-        child: Container(
-          margin: const EdgeInsets.symmetric(
-              horizontal: 10, vertical: 6),
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: isMe
-                ? const Color(0xFF00FF7F)
-                : Colors.grey[800],
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (message.replyTo != null)
-                _buildReplyPreview(message.replyTo!),
-              if (widget.chatType == ChatType.group || !isMe)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 4),
-                  child: Text(
-                    message.senderUsername ?? "User",
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.bold,
-                      color: isMe
-                          ? Colors.black.withOpacity(0.7)
-                          : const Color(0xFF00FF7F),
-                    ),
-                  ),
-                ),
 
-              ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: CachedNetworkImage(
-                  imageUrl: post['image'],
-                  width: 200,
-                  height: 200,
-                  fit: BoxFit.cover,
-                ),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                post['caption'] ?? '',
-                style: TextStyle(
-                  color: isMe ? Colors.black : Colors.white,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
 
   Widget _buildReplyPreview(String replyId) {
     final repliedMessage =
