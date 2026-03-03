@@ -12,6 +12,7 @@ import 'package:http/http.dart' as http;
 
 import '../../services/constants.dart';
 import '../../services/storage_service.dart';
+import '../group/group_about_screen.dart';
 import '../profile/profile_screen.dart';
 import 'widgets/chat_post_bubble.dart';
 import '../profile/post_detail_modal.dart';
@@ -113,10 +114,21 @@ class _ChatScreenState extends State<ChatScreen> {
   ChatMessage? _replyingTo;
 
   late int myUserId;
-
+  String? _headerImage;
+  String? _headerTitle;
   /// PAGINATION CONFIG
   static const int pageSize = 25;
   bool _isCurrentUserAdmin = false;
+
+  String? _buildImageUrl(String? imagePath) {
+    if (imagePath == null || imagePath.isEmpty) return null;
+
+    if (imagePath.startsWith('http')) {
+      return imagePath;
+    }
+
+    return "${ApiConstants.baseUrl}$imagePath";
+  }
 
   /// ───────────────── INIT ─────────────────
 
@@ -157,6 +169,7 @@ class _ChatScreenState extends State<ChatScreen> {
     _setupInitialQuery();
 
     _scrollController.addListener(_handleScroll);
+    await _loadHeaderData();
   }
   Future<void> _loadAdminStatus() async {
     try {
@@ -182,6 +195,45 @@ class _ChatScreenState extends State<ChatScreen> {
             });
             break;
           }
+        }
+      }
+    } catch (_) {}
+  }
+  Future<void> _loadHeaderData() async {
+    final token = await StorageService.getToken();
+    if (token == null) return;
+
+    try {
+      if (widget.chatType == ChatType.private &&
+          widget.otherUserId != null) {
+
+        final res = await http.get(
+          Uri.parse(
+              '${ApiConstants.baseUrl}/profiles/${widget.otherUserId}/'),
+          headers: {'Authorization': 'Token $token'},
+        );
+
+        if (res.statusCode == 200) {
+          final data = jsonDecode(res.body);
+          setState(() {
+            _headerTitle = data['username'];
+            _headerImage = data['profile_image'];
+          });
+        }
+      }
+
+      if (widget.chatType == ChatType.group) {
+        final res = await http.get(
+          Uri.parse('${ApiConstants.baseUrl}/groups/${widget.chatRoomId}/'),
+          headers: {'Authorization': 'Token $token'},
+        );
+
+        if (res.statusCode == 200) {
+          final data = jsonDecode(res.body);
+          setState(() {
+            _headerTitle = data['name'];
+            _headerImage = _buildImageUrl(data['image']);
+          });
         }
       }
     } catch (_) {}
@@ -439,6 +491,32 @@ class _ChatScreenState extends State<ChatScreen> {
     } catch (_) {}
   }
 
+  void _openHeaderTarget() {
+    if (widget.chatType == ChatType.private &&
+        widget.otherUserId != null) {
+
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ProfileScreen(
+            userId: widget.otherUserId,
+          ),
+        ),
+      );
+    }
+
+    if (widget.chatType == ChatType.group) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => GroupAboutScreen(
+            groupId: widget.chatRoomId,
+          ),
+        ),
+      );
+    }
+  }
+
   /// ───────────────── UI ─────────────────
 
   @override
@@ -447,10 +525,35 @@ class _ChatScreenState extends State<ChatScreen> {
       backgroundColor: Colors.black,
       appBar: AppBar(
         backgroundColor: Colors.black,
-        title: Text(
-          widget.title ?? "Chat",
-          style: const TextStyle(color: Colors.white),
-        ),
+          title: GestureDetector(
+            onTap: _openHeaderTarget,
+            child: Row(
+              children: [
+                CircleAvatar(
+                  radius: 18,
+                  backgroundColor: Colors.grey[800],
+                  backgroundImage: (_headerImage != null &&
+                      _headerImage!.startsWith('http'))
+                      ? NetworkImage(_headerImage!)
+                      : null,
+                  child: _headerImage == null
+                      ? const Icon(Icons.person, size: 18, color: Colors.white54)
+                      : null,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    _headerTitle ?? widget.title ?? "Chat",
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+          ),
       ),
       body: Column(
         children: [
