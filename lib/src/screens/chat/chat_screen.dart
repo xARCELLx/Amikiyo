@@ -713,20 +713,35 @@ class _ChatScreenState extends State<ChatScreen> {
                 _buildReplyPreview(message.replyTo!),
 
               // 🔥 USERNAME (Group OR Private Other User)
-              if (widget.chatType == ChatType.group || !isMe)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 4),
-                  child: Text(
-                    message.senderUsername ?? "User",
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.bold,
-                      color: isMe
-                          ? Colors.black.withOpacity(0.7)
-                          : const Color(0xFF00FF7F),
-                    ),
-                  ),
+          if (widget.chatType == ChatType.group || !isMe)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: GestureDetector(
+                onTap: () {
+                if (widget.chatType == ChatType.group &&
+                    message.senderId != myUserId) {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => ProfileScreen(
+                        userId: message.senderId,
+                        ),
+                      ),
+                    );
+                }
+                },
+                child: Text(
+                message.senderUsername ?? "User",
+                style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+                color: isMe
+                ? Colors.black.withOpacity(0.7)
+                    : const Color(0xFF00FF7F),
                 ),
+                ),
+                ),
+          ),
 
               // 🔥 MESSAGE TEXT
               Text(

@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 
 import '../home/feed_screen.dart';
+import '../story/story_viewer_screen.dart';
+import '../../models/story_model.dart';
+import '../../services/story_service.dart';
+import '../../widgets/story/story_list.dart';
+
 import 'widgets/app_bar.dart';
 import 'widgets/bottom_nav_bar.dart';
-
-import 'widgets/trending_banner.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -14,41 +17,82 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  final TextEditingController _searchController = TextEditingController();
 
+  List<StoryUser> _stories = [];
+  bool _loadingStories = true;
 
   @override
-  void dispose() {
-    _searchController.dispose();
-    super.dispose();
+  void initState() {
+    super.initState();
+    _loadStories();
   }
 
+  // ───────────────── LOAD STORIES ─────────────────
 
-  // ───────────────── MAIN BUILD ─────────────────
+  Future<void> _loadStories() async {
+    try {
+
+      final stories = await StoryService.fetchStoryFeed();
+
+      if (!mounted) return;
+
+      setState(() {
+        _stories = stories;
+        _loadingStories = false;
+      });
+
+    } catch (_) {
+
+      if (!mounted) return;
+
+      setState(() {
+        _loadingStories = false;
+      });
+
+    }
+  }
+
+  // ───────────────── UI ─────────────────
 
   @override
   Widget build(BuildContext context) {
+
     return Scaffold(
       backgroundColor: Colors.black,
 
-      // 🔥 AppBar with Search
-      appBar:customAppBar(context, title:'Amikiyo'),
+      // AppBar
+      appBar: customAppBar(context, title: 'Amikiyo'),
 
-
-      // 🔥 Bottom Navigation
+      // Bottom Navigation
       bottomNavigationBar: const BottomNavBar(currentIndex: 0),
 
-      // 🔥 Body
       body: Column(
         children: [
 
-          // Trending Banner stays on top
-          const TrendingBanner(),
+          // ───────── STORIES ROW ─────────
 
-          // REAL FEED ENGINE EMBEDDED HERE
+          SizedBox(
+            height: 110,
+            child: _loadingStories
+                ? const Center(
+              child: CircularProgressIndicator(
+                color: Color(0xFF00FF7F),
+              ),
+            )
+                : StoryList(stories: _stories),
+          ),
+
+          const Divider(
+            height: 1,
+            color: Colors.white10,
+          ),
+
+          // ───────── POSTS FEED ─────────
+
           const Expanded(
             child: FeedScreen(),
           ),
+
         ],
       ),
     );
