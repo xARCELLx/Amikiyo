@@ -3,22 +3,27 @@ class StoryUser {
   final String username;
   final String? profileImage;
   final List<StoryItem> stories;
+  final bool isMe;
 
   StoryUser({
     required this.userId,
     required this.username,
     required this.profileImage,
     required this.stories,
+    required this.isMe,
   });
 
   factory StoryUser.fromJson(Map<String, dynamic> json) {
     return StoryUser(
-      userId: json['user_id'],
-      username: json['username'],
-      profileImage: json['profile_image'],
-      stories: (json['stories'] as List)
+      userId: json["user_id"],
+      username: json["username"],
+      profileImage: json["profile_image"],
+      stories: (json["stories"] as List)
           .map((s) => StoryItem.fromJson(s))
           .toList(),
+
+      // backend should return this
+      isMe: json["is_me"] ?? false,
     );
   }
 }

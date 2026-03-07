@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../home/feed_screen.dart';
-import '../story/story_viewer_screen.dart';
 import '../../models/story_model.dart';
 import '../../services/story_service.dart';
 import '../../widgets/story/story_list.dart';
@@ -30,6 +29,13 @@ class _HomeScreenState extends State<HomeScreen> {
   // ───────────────── LOAD STORIES ─────────────────
 
   Future<void> _loadStories() async {
+
+    if (!mounted) return;
+
+    setState(() {
+      _loadingStories = true;
+    });
+
     try {
 
       final stories = await StoryService.fetchStoryFeed();
@@ -38,18 +44,19 @@ class _HomeScreenState extends State<HomeScreen> {
 
       setState(() {
         _stories = stories;
-        _loadingStories = false;
       });
 
-    } catch (_) {
+    } catch (e) {
 
-      if (!mounted) return;
-
-      setState(() {
-        _loadingStories = false;
-      });
+      debugPrint("Story load error: $e");
 
     }
+
+    if (!mounted) return;
+
+    setState(() {
+      _loadingStories = false;
+    });
   }
 
   // ───────────────── UI ─────────────────
@@ -79,7 +86,10 @@ class _HomeScreenState extends State<HomeScreen> {
                 color: Color(0xFF00FF7F),
               ),
             )
-                : StoryList(stories: _stories),
+                : StoryList(
+              stories: _stories,
+              refreshStories: _loadStories, // 🔥 IMPORTANT
+            ),
           ),
 
           const Divider(

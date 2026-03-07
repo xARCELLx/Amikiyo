@@ -7,22 +7,22 @@ import '../../screens/story/create_story_screen.dart';
 class StoryList extends StatelessWidget {
   final List<StoryUser> stories;
 
+  // 🔥 refresh callback from HomeScreen
+  final Future<void> Function() refreshStories;
+
   const StoryList({
     super.key,
     required this.stories,
+    required this.refreshStories,
   });
 
   @override
   Widget build(BuildContext context) {
-
     return SizedBox(
       height: 100,
       child: ListView.builder(
         scrollDirection: Axis.horizontal,
-
-        // +1 for "Your Story"
-        itemCount: stories.length + 1,
-
+        itemCount: stories.length + 1, // +1 for Your Story
         itemBuilder: (context, index) {
 
           // ───────── YOUR STORY BUTTON ─────────
@@ -40,9 +40,9 @@ class StoryList extends StatelessWidget {
                     ),
                   );
 
-                  // refresh stories if uploaded
+                  // 🔥 reload stories instantly
                   if (created == true) {
-                    Navigator.pop(context);
+                    await refreshStories();
                   }
 
                 },
@@ -108,9 +108,9 @@ class StoryList extends StatelessWidget {
               username: storyUser.username,
               imageUrl: storyUser.profileImage,
               isSeen: isSeen,
-              onTap: () {
+              onTap: () async {
 
-                Navigator.push(
+                final watched = await Navigator.push(
                   context,
                   MaterialPageRoute(
                     builder: (_) => StoryViewerScreen(
@@ -118,6 +118,11 @@ class StoryList extends StatelessWidget {
                     ),
                   ),
                 );
+
+                // 🔥 refresh ring after watching
+                if (watched == true) {
+                  await refreshStories();
+                }
 
               },
             ),
