@@ -118,9 +118,41 @@ class _StoryViewerScreenState extends State<StoryViewerScreen>
     _controller.forward();
   }
 
-  // ───────── DELETE STORY ─────────
+  // ───────── DELETE STORY WITH CONFIRMATION ─────────
 
   Future<void> _deleteStory() async {
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (_) {
+        return AlertDialog(
+          backgroundColor: Colors.black,
+          title: const Text(
+            "Delete Story",
+            style: TextStyle(color: Colors.white),
+          ),
+          content: const Text(
+            "Are you sure you want to delete this story?",
+            style: TextStyle(color: Colors.white70),
+          ),
+          actions: [
+            TextButton(
+              child: const Text("Cancel"),
+              onPressed: () => Navigator.pop(context, false),
+            ),
+            TextButton(
+              child: const Text(
+                "Delete",
+                style: TextStyle(color: Colors.red),
+              ),
+              onPressed: () => Navigator.pop(context, true),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirm != true) return;
 
     final story = stories[currentIndex];
 
@@ -131,7 +163,7 @@ class _StoryViewerScreenState extends State<StoryViewerScreen>
     Navigator.pop(context, true);
   }
 
-  // ───────── VIEWERS BOTTOM SHEET ─────────
+  // ───────── VIEWERS MODAL ─────────
 
   Future<void> _openViewers() async {
 
@@ -144,27 +176,86 @@ class _StoryViewerScreenState extends State<StoryViewerScreen>
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.black,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
+      ),
       builder: (_) {
 
+        if (viewers.isEmpty) {
+          return const SizedBox(
+            height: 200,
+            child: Center(
+              child: Text(
+                "No viewers yet",
+                style: TextStyle(color: Colors.white54),
+              ),
+            ),
+          );
+        }
+
         return SafeArea(
-          child: ListView.builder(
-            itemCount: viewers.length,
-            itemBuilder: (context, index) {
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
 
-              final viewer = viewers[index];
+              const SizedBox(height: 8),
 
-              return ListTile(
-                leading: CircleAvatar(
-                  backgroundImage: NetworkImage(
-                    viewer["profile_image"],
-                  ),
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.white24,
+                  borderRadius: BorderRadius.circular(4),
                 ),
-                title: Text(
-                  viewer["username"],
-                  style: const TextStyle(color: Colors.white),
+              ),
+
+              const SizedBox(height: 14),
+
+              const Text(
+                "Viewers",
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
                 ),
-              );
-            },
+              ),
+
+              const SizedBox(height: 10),
+
+              const Divider(color: Colors.white12, height: 1),
+
+              Expanded(
+                child: ListView.separated(
+                  itemCount: viewers.length,
+                  separatorBuilder: (_, __) =>
+                  const Divider(color: Colors.white12, height: 1),
+                  itemBuilder: (context, index) {
+
+                    final viewer = viewers[index];
+
+                    return ListTile(
+                      leading: CircleAvatar(
+                        radius: 20,
+                        backgroundColor: Colors.grey[800],
+                        backgroundImage: viewer["profile_image"] != null
+                            ? NetworkImage(viewer["profile_image"])
+                            : null,
+                        child: viewer["profile_image"] == null
+                            ? const Icon(Icons.person, color: Colors.white54)
+                            : null,
+                      ),
+                      title: Text(
+                        viewer["username"],
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
           ),
         );
       },
@@ -280,7 +371,7 @@ class _StoryViewerScreenState extends State<StoryViewerScreen>
                             const SizedBox(width: 6),
 
                             Text(
-                              "${story.viewsCount ?? 0} views",
+                              "${story.viewsCount} views",
                               style: const TextStyle(
                                 color: Colors.white70,
                               ),
