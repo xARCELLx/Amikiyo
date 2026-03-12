@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
@@ -6,6 +7,7 @@ import '../../services/constants.dart';
 import '../../services/storage_service.dart';
 import '../profile/post_detail_modal.dart';
 import 'widgets/feed_post_card.dart';
+import 'widgets/thought_viewer.dart';
 
 class FeedScreen extends StatefulWidget {
   const FeedScreen({super.key});
@@ -15,7 +17,7 @@ class FeedScreen extends StatefulWidget {
 }
 
 class _FeedScreenState extends State<FeedScreen> {
-  List<dynamic> _posts = [];
+  final List<dynamic> _posts = [];
 
   bool _isLoading = true;
   bool _isRefreshing = false;
@@ -25,7 +27,6 @@ class _FeedScreenState extends State<FeedScreen> {
   final ScrollController _scrollController = ScrollController();
 
   int _page = 1;
-  bool _hasMore = true;
 
   @override
   void initState() {
@@ -43,9 +44,10 @@ class _FeedScreenState extends State<FeedScreen> {
   // ───────────────── FETCH FEED ─────────────────
 
   Future<void> _fetchFeed({bool refresh = false}) async {
+    if (_isLoadingMore) return;
+
     if (refresh) {
       _page = 1;
-      _hasMore = true;
       setState(() => _isRefreshing = true);
     } else if (_page == 1) {
       setState(() {
@@ -54,34 +56,38 @@ class _FeedScreenState extends State<FeedScreen> {
       });
     }
 
-    if (!_hasMore) return;
-
     try {
       final token = await StorageService.getToken();
       if (token == null) throw Exception("No token");
 
       final res = await http.get(
         Uri.parse('${ApiConstants.baseUrl}/home-feed/?page=$_page'),
-        headers: {
-          'Authorization': 'Token $token',
-        },
+        headers: {'Authorization': 'Token $token'},
       );
 
       if (res.statusCode == 200) {
-        final List data = jsonDecode(res.body);
+        final decoded = jsonDecode(res.body);
+
+        List<dynamic> data;
+
+        if (decoded is Map && decoded.containsKey('results')) {
+          data = decoded['results'];
+        } else {
+          data = decoded;
+        }
 
         if (!mounted) return;
 
         setState(() {
           if (refresh) {
-            _posts = data;
-          } else {
-            _posts.addAll(data);
+            _posts.clear();
           }
 
           if (data.isEmpty) {
-            _hasMore = false;
+            // LOOP FEED — restart from page 1
+            _page = 1;
           } else {
+            _posts.addAll(data);
             _page++;
           }
 
@@ -90,7 +96,7 @@ class _FeedScreenState extends State<FeedScreen> {
           _isLoadingMore = false;
         });
       } else {
-        throw Exception("Feed error");
+        throw Exception("Feed error ${res.statusCode}");
       }
     } catch (e) {
       if (!mounted) return;
@@ -108,16 +114,15 @@ class _FeedScreenState extends State<FeedScreen> {
 
   void _scrollListener() {
     if (_scrollController.position.pixels >=
-        _scrollController.position.maxScrollExtent - 300 &&
+        _scrollController.position.maxScrollExtent - 400 &&
         !_isLoadingMore &&
-        !_isLoading &&
-        _hasMore) {
+        !_isLoading) {
       setState(() => _isLoadingMore = true);
       _fetchFeed();
     }
   }
 
-  // ───────────────── OPEN POST DETAIL ─────────────────
+  // ───────────────── IMAGE POST MODAL ─────────────────
 
   void _openPostDetail(Map<String, dynamic> post) {
     showModalBottomSheet(
@@ -128,6 +133,20 @@ class _FeedScreenState extends State<FeedScreen> {
         post: post,
         heroTag: 'feed_post_${post['id']}',
       ),
+    );
+  }
+
+  // ───────────────── THOUGHT MODAL ─────────────────
+
+  void _openThoughtViewer(Map<String, dynamic> post) {
+    showGeneralDialog(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: "thought",
+      barrierColor: Colors.black45,
+      pageBuilder: (_, __, ___) {
+        return ThoughtViewer(post: post);
+      },
     );
   }
 
@@ -185,7 +204,8 @@ class _FeedScreenState extends State<FeedScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading && _page == 1) {
+
+    if (_isLoading && _posts.isEmpty) {
       return _buildLoading();
     }
 
@@ -203,27 +223,28 @@ class _FeedScreenState extends State<FeedScreen> {
         color: const Color(0xFF00FF7F),
         backgroundColor: Colors.black,
         onRefresh: () => _fetchFeed(refresh: true),
-        child: ListView.builder(
+        child: ListView.separated(
           controller: _scrollController,
           physics: const AlwaysScrollableScrollPhysics(),
-          itemCount: _posts.length + (_isLoadingMore ? 1 : 0),
+          itemCount: _posts.length,
+          separatorBuilder: (_, __) => Container(
+            height: 0.6,
+            color: Colors.white10,
+          ),
           itemBuilder: (_, index) {
-            if (index >= _posts.length) {
-              return const Padding(
-                padding: EdgeInsets.all(16),
-                child: Center(
-                  child: CircularProgressIndicator(
-                    color: Color(0xFF00FF7F),
-                  ),
-                ),
-              );
-            }
 
             final post = _posts[index];
+            final isThought = post['post_type'] == 'thought';
 
             return FeedPostCard(
               post: post,
-              onTap: () => _openPostDetail(post),
+              onTap: () {
+                if (isThought) {
+                  _openThoughtViewer(post);
+                } else {
+                  _openPostDetail(post);
+                }
+              },
             );
           },
         ),

@@ -19,6 +19,7 @@ import './board_card.dart';
 import '../settings/settings_screen.dart';
 import '../post_creation/create_post_screen.dart';
 import 'post_detail_modal.dart';
+import '../../widgets/create_post_fab/create_post_fab.dart';
 
 class ProfileScreen extends StatefulWidget {
   /// null = my profile, non-null = other user
@@ -513,20 +514,8 @@ class _ProfileScreenState extends State<ProfileScreen>
       bottomNavigationBar:
       const BottomNavBar(currentIndex: 3),
       floatingActionButton: isOwner
-          ? FloatingActionButton(
-        backgroundColor:
-        const Color(0xFFFFFFFF),
-        onPressed: () async {
-          final result = await Navigator.push(
-            context,
-            MaterialPageRoute(
-                builder: (_) =>
-                const CreatePostScreen()),
-          );
-          if (result == true) _loadEverything();
-        },
-        child:
-        const Icon(Icons.add, color: Colors.black),
+          ? CreatePostFab(
+        onPostCreated: _loadEverything,
       )
           : null,
     );
