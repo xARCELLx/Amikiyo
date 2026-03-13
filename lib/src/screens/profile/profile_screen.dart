@@ -15,6 +15,7 @@ import '../../services/api_service.dart';
 import '../../services/storage_service.dart';
 import '../../services/constants.dart';
 import '../chat/chat_screen.dart';
+import '../home/widgets/thought_viewer.dart';
 import './board_card.dart';
 import '../settings/settings_screen.dart';
 import '../post_creation/create_post_screen.dart';
@@ -43,6 +44,7 @@ class _ProfileScreenState extends State<ProfileScreen>
   bool get isOwner => widget.userId == null;
 
   /// 🔐 FINAL SOURCE OF TRUTH FOR UI POSTS
+  /// 🔐 FINAL SOURCE OF TRUTH FOR UI POSTS
   List<Map<String, dynamic>> get visiblePosts {
     if (isOwner) {
       return List<Map<String, dynamic>>.from(posts);
@@ -52,6 +54,24 @@ class _ProfileScreenState extends State<ProfileScreen>
         .map<Map<String, dynamic>>(
           (p) => Map<String, dynamic>.from(p),
     )
+        .toList();
+  }
+
+  /// ───────────────── IMAGE POSTS ─────────────────
+  /// Only image posts (used in grid)
+  List<Map<String, dynamic>> get imagePosts {
+    return visiblePosts
+        .where((p) => p['post_type'] != 'thought')
+        .map<Map<String, dynamic>>((p) => Map<String, dynamic>.from(p))
+        .toList();
+  }
+
+  /// ───────────────── THOUGHT POSTS ─────────────────
+  /// Text thoughts only
+  List<Map<String, dynamic>> get thoughtPosts {
+    return visiblePosts
+        .where((p) => p['post_type'] == 'thought')
+        .map<Map<String, dynamic>>((p) => Map<String, dynamic>.from(p))
         .toList();
   }
 
@@ -243,7 +263,7 @@ class _ProfileScreenState extends State<ProfileScreen>
     final bio = profileData!['bio'] ?? 'No bio yet';
     final profileImage = profileData!['profile_image'] ?? '';
     final board = profileData!['anime_board'] ?? {};
-    final postsCount = visiblePosts.length;
+    final postsCount = imagePosts.length;
     final followersCount = profileData!['followers_count'] ?? 0;
     final followingCount = profileData!['following_count'] ?? 0;
 
@@ -471,36 +491,118 @@ class _ProfileScreenState extends State<ProfileScreen>
                       const SizedBox(height: 16),
 
                       // POSTS GRID
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        child: GridView.builder(
-                          shrinkWrap: true,
-                          physics:
-                          const NeverScrollableScrollPhysics(),
-                          gridDelegate:
-                          const SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: 3,
-                            crossAxisSpacing: 8,
-                            mainAxisSpacing: 8,
+    if (imagePosts.isNotEmpty)
+    Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          gridDelegate:
+          const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 3,
+          crossAxisSpacing: 8,
+          mainAxisSpacing: 8,
+          ),
+          itemCount: imagePosts.length,
+          itemBuilder: (_, i) {
+          final post = imagePosts[i];
+
+          return GestureDetector(
+          onTap: () => _openPostDetail(post),
+          child: ClipRRect(
+          borderRadius: BorderRadius.circular(6),
+          child: CachedNetworkImage(
+          imageUrl: post['image'] ??
+          Constants.placeholderImagePath,
+          fit: BoxFit.cover,
+          ),
+          ),
+          );
+        },
+      ),
+
+    ),
+                      // ───────────────── SHARED THOUGHTS ─────────────────
+
+                      if (thoughtPosts.isNotEmpty) ...[
+
+                        const SizedBox(height: 28),
+
+                        const Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 16),
+                          child: Text(
+                            "Shared Thoughts",
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              fontFamily: 'AnimeAce',
+                            ),
                           ),
-                          itemCount: visiblePosts.length,
+                        ),
+
+                        const SizedBox(height: 12),
+
+                        ListView.separated(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          itemCount: thoughtPosts.length,
+                          separatorBuilder: (_, __) => const Divider(
+                            color: Colors.white12,
+                            height: 24,
+                          ),
                           itemBuilder: (_, i) {
-                            final post = visiblePosts[i];
-                            return GestureDetector(
-                              onTap: () => _openPostDetail(post),
-                              child: ClipRRect(
-                                borderRadius:
-                                BorderRadius.circular(6),
-                                child: CachedNetworkImage(
-                                  imageUrl: post['image'] ??
-                                      Constants.placeholderImagePath,
-                                  fit: BoxFit.cover,
+
+                            final thought = thoughtPosts[i];
+                            final caption = thought['caption'] ?? '';
+                            final anime = thought['anime_title'];
+
+                            return Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 16),
+                              child: GestureDetector(
+                                onTap: () {
+                                  showGeneralDialog(
+                                    context: context,
+                                    barrierDismissible: true,
+                                    barrierColor: Colors.black54,
+                                    pageBuilder: (_, __, ___) {
+                                      return ThoughtViewer(post: thought);
+                                    },
+                                  );
+                                },
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+
+                                    Text(
+                                      caption,
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 16,
+                                        height: 1.4,
+                                      ),
+                                      maxLines: 3,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+
+                                    if (anime != null) ...[
+                                      const SizedBox(height: 6),
+                                      Text(
+                                        anime,
+                                        style: const TextStyle(
+                                          color: Color(0xFF00FF7F),
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                    ],
+                                  ],
                                 ),
                               ),
                             );
                           },
                         ),
-                      ),
+
+                      ],
 
                       const SizedBox(height: 100),
                     ],
