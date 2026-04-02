@@ -8,7 +8,8 @@ AppBar customAppBar(BuildContext context, {required String title}) {
     title: Text(title, style: Theme.of(context).textTheme.titleLarge),
     leading: Padding(
       padding: const EdgeInsets.all(8.0),
-      child: Image.asset(Constants.logoPath, fit: BoxFit.contain),
+      child: Image.asset(Constants.logoPath, fit: BoxFit.contain,scale: 100,),
+
     ),
     actions: [
       IconButton(

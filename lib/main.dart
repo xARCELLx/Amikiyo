@@ -5,16 +5,22 @@ import 'firebase_options.dart';
 
 import 'src/config/theme.dart';
 import 'src/screens/auth/auth_screen.dart';
-import 'src/screens/home/feed_screen.dart';
 import 'src/services/storage_service.dart';
+import 'src/services/notification_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
 
-  final token = await StorageService.getToken(); // ✅ DRF TOKEN CHECK
+  final token = await StorageService.getToken();
+
+  // 🔥 INIT NOTIFICATIONS ONLY IF USER LOGGED IN
+  if (token != null) {
+    await NotificationService.init();
+  }
 
   runApp(AnimeSocialApp(
     initialRoute: token == null ? '/auth' : '/home',
