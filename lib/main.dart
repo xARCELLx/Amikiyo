@@ -15,12 +15,10 @@ void main() async {
     options: DefaultFirebaseOptions.currentPlatform,
   );
 
-  final token = await StorageService.getToken();
+  // 🔥 INIT NOTIFICATIONS
+  await NotificationService.initialize();
 
-  // 🔥 INIT NOTIFICATIONS ONLY IF USER LOGGED IN
-  if (token != null) {
-    await NotificationService.init();
-  }
+  final token = await StorageService.getToken();
 
   runApp(AnimeSocialApp(
     initialRoute: token == null ? '/auth' : '/home',
@@ -35,7 +33,8 @@ class AnimeSocialApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'AnimeConnect',
+      navigatorKey: NotificationService.navigatorKey, // 🔥 IMPORTANT
+      title: 'Amikiyo',
       theme: appTheme(),
       debugShowCheckedModeBanner: false,
       initialRoute: initialRoute,
