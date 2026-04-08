@@ -21,7 +21,7 @@ AppBar customAppBar(BuildContext context, {required String title}) {
       IconButton(
         icon: const Icon(Icons.notifications),
         onPressed: () {
-          Navigator.push(context, MaterialPageRoute(builder: (context) => const NotificationsScreen()));
+          Navigator.push(context, MaterialPageRoute(builder: (context) => const NotificationScreen()));
         },
       ),
     ],

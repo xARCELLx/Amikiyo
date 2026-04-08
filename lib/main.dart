@@ -1,4 +1,5 @@
 import 'package:amikiyo/src/screens/home/home_screen.dart';
+import 'src/screens/notifications/notifications_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
@@ -15,7 +16,7 @@ void main() async {
     options: DefaultFirebaseOptions.currentPlatform,
   );
 
-  // 🔥 INIT NOTIFICATIONS
+  // 🔥 INIT PUSH NOTIFICATIONS
   await NotificationService.initialize();
 
   final token = await StorageService.getToken();
@@ -33,14 +34,19 @@ class AnimeSocialApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      navigatorKey: NotificationService.navigatorKey, // 🔥 IMPORTANT
+      navigatorKey: NotificationService.navigatorKey, // 🔥 REQUIRED for push navigation
       title: 'Amikiyo',
       theme: appTheme(),
       debugShowCheckedModeBanner: false,
+
       initialRoute: initialRoute,
+
       routes: {
         '/auth': (_) => const AuthScreen(),
         '/home': (_) => const HomeScreen(),
+
+        // 🔥 NEW ROUTE
+        '/notifications': (_) => const NotificationScreen(),
       },
     );
   }
