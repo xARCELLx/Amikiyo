@@ -195,8 +195,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
                 return StreamBuilder(
                   stream: _db
                       .child(chatId)
-                      .child('messages')
-                      .limitToLast(1)
+                      .child('metadata')
                       .onValue,
                   builder: (context, snap) {
                     String lastMessage = 'Say hi 👋';
@@ -206,13 +205,44 @@ class _ChatListScreenState extends State<ChatListScreen> {
                       final map = Map<String, dynamic>.from(
                         snap.data!.snapshot.value as Map,
                       );
-                      final msg = map.values.first
-                      as Map<dynamic, dynamic>;
-                      lastMessage =
-                          msg['text']?.toString() ?? '';
+                      final data =
+                      Map<String, dynamic>.from(snap.data!.snapshot.value as Map);
+
+                      lastMessage = data['lastMessage'] ?? 'Say hi 👋';
                     }
 
                     return ListTile(
+                      trailing: StreamBuilder(
+                        stream: _db
+                            .child(chatId)
+                            .child('unreadCount')
+                            .onValue,
+                        builder: (context, snapshot) {
+                          if (!snapshot.hasData ||
+                              snapshot.data!.snapshot.value == null) {
+                            return SizedBox();
+                          }
+
+                          final unreadMap = Map<String, dynamic>.from(
+                              snapshot.data!.snapshot.value as Map);
+
+                          final myId = StorageService.getUserId();
+
+                          final count =
+                              unreadMap[( myId).toString()] ?? 0;
+
+                          if (count == 0) return SizedBox();
+
+                          return CircleAvatar(
+                            radius: 10,
+                            backgroundColor: Color(0xFF00FF7F),
+                            child: Text(
+                              count.toString(),
+                              style: TextStyle(fontSize: 10, color: Colors.black),
+                            ),
+                          );
+                        },
+                      ),
                       leading: GestureDetector(
                         onTap: () {
                           if (profile != null) {

@@ -16,6 +16,9 @@ import '../group/group_about_screen.dart';
 import '../profile/profile_screen.dart';
 import 'widgets/chat_post_bubble.dart';
 import '../profile/post_detail_modal.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'dart:io';
 enum ChatType { private, group }
 
 /// ─────────────────────────────────────────────────────────────
@@ -34,6 +37,7 @@ class ChatMessage {
   final bool deletedForEveryone;
   final Map<String, dynamic>? deletedFor;
   final Map<String, dynamic>? seenBy;
+  final String? imageUrl;
 
   ChatMessage({
     required this.id,
@@ -47,12 +51,14 @@ class ChatMessage {
     this.deletedFor,
     this.seenBy,
     this.senderUsername,
+    this.imageUrl,
   });
 
   factory ChatMessage.fromSnapshot(DataSnapshot snap) {
     final data = Map<String, dynamic>.from(snap.value as Map);
 
     return ChatMessage(
+      imageUrl: data['imageUrl'],
       id: snap.key!,
       senderId: data['senderId'] ?? 0,
       senderUsername: data['senderUsername'],
@@ -82,6 +88,7 @@ class ChatScreen extends StatefulWidget {
   final int? otherUserId;
   final String? title;
 
+
   const ChatScreen({
     Key? key,
     required this.chatRoomId,
@@ -98,6 +105,7 @@ class _ChatScreenState extends State<ChatScreen> {
   /// CONTROLLERS
   final TextEditingController _controller = TextEditingController();
   final ScrollController _scrollController = ScrollController();
+  bool _isInitialized = false;
 
   /// FIREBASE
   late DatabaseReference _chatRef;
@@ -170,6 +178,10 @@ class _ChatScreenState extends State<ChatScreen> {
 
     _scrollController.addListener(_handleScroll);
     await _loadHeaderData();
+    await _chatRef.child('unreadCount/$myUserId').set(0);
+    setState(() {
+      _isInitialized = true;
+    });
   }
   Future<void> _loadAdminStatus() async {
     try {
@@ -379,20 +391,102 @@ class _ChatScreenState extends State<ChatScreen> {
 
     final myUsername = widget.chatType == ChatType.private
         ? widget.title ?? ''
-        : await StorageService.getUsername(); // if you have it
+        : await StorageService.getUsername();
+
+    final timestamp = ServerValue.timestamp;
 
     await msgRef.set({
       "senderId": myUserId,
       "senderUsername": myUsername,
       "type": "text",
       "content": text,
-      "timestamp": ServerValue.timestamp,
+      "timestamp": timestamp,
       "replyTo": _replyingTo?.id,
       "deletedForEveryone": false,
     });
 
+    /// 🔥 METADATA UPDATE
+    await _chatRef.child('metadata').update({
+      "lastMessage": text,
+      "lastMessageType": "text",
+      "lastMessageTime": timestamp,
+      "lastSenderId": myUserId,
+    });
+
+    /// 🔥 UNREAD COUNT UPDATE
+    final participantsSnap =
+    await _chatRef.child('participants').get();
+
+    if (participantsSnap.exists) {
+      final participants =
+      Map<String, dynamic>.from(participantsSnap.value as Map);
+
+      for (final userId in participants.keys) {
+        if (int.parse(userId) != myUserId) {
+          final current = await _chatRef
+              .child('unreadCount/$userId')
+              .get();
+
+          int count = current.exists ? current.value as int : 0;
+
+          await _chatRef
+              .child('unreadCount/$userId')
+              .set(count + 1);
+        }
+      }
+    }
+
+    /// RESET MY UNREAD
+    await _chatRef.child('unreadCount/$myUserId').set(0);
+
+    /// STOP TYPING
+    await _chatRef.child('typing/$myUserId').set(false);
+
     _controller.clear();
     _cancelReply();
+  }
+
+  Future<void> _sendImage() async {
+    final picker = ImagePicker();
+    final picked = await picker.pickImage(source: ImageSource.gallery);
+
+    if (picked == null) return;
+
+    final file = File(picked.path);
+
+    final fileName = DateTime.now().millisecondsSinceEpoch.toString();
+
+    final ref = FirebaseStorage.instance
+        .ref()
+        .child('chat_images/${widget.chatRoomId}/$fileName.jpg');
+
+    await ref.putFile(file);
+
+    final imageUrl = await ref.getDownloadURL();
+
+    final msgRef = _chatRef.child('messages').push();
+
+    final username = await StorageService.getUsername();
+
+    await msgRef.set({
+      "senderId": myUserId,
+      "senderUsername": username,
+      "type": "image",
+      "imageUrl": imageUrl,
+      "timestamp": ServerValue.timestamp,
+      "deletedForEveryone": false,
+    });
+
+    /// 🔥 UPDATE METADATA
+    await _chatRef.child('metadata').update({
+      "lastMessage": "📷 Image",
+      "lastMessageType": "image",
+      "lastMessageTime": ServerValue.timestamp,
+      "lastSenderId": myUserId,
+    });
+
+    /// 🔥 RESET UNREAD
+    await _chatRef.child('unreadCount/$myUserId').set(0);
   }
 
   void _setReply(ChatMessage message) {
@@ -521,6 +615,16 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (!_isInitialized) {
+      return Scaffold(
+        backgroundColor: Colors.black,
+        body: Center(
+          child: CircularProgressIndicator(
+            color: Color(0xFF00FF7F),
+          ),
+        ),
+      );
+    }
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
@@ -557,6 +661,29 @@ class _ChatScreenState extends State<ChatScreen> {
       ),
       body: Column(
         children: [
+          StreamBuilder(
+            stream: _chatRef.child('typing').onValue,
+            builder: (context, snap) {
+              if (!snap.hasData || snap.data!.snapshot.value == null) {
+                return const SizedBox();
+              }
+
+              final typing =
+              Map<String, dynamic>.from(snap.data!.snapshot.value as Map);
+
+              typing.remove(myUserId.toString());
+
+              if (typing.isEmpty) return const SizedBox();
+
+              return Padding(
+                padding: const EdgeInsets.all(8),
+                child: Text(
+                  "Typing...",
+                  style: TextStyle(color: Colors.white54),
+                ),
+              );
+            },
+          ),
           Expanded(
             child: ListView.builder(
               controller: _scrollController,
@@ -572,6 +699,32 @@ class _ChatScreenState extends State<ChatScreen> {
                 if (msg.deletedFor != null &&
                     msg.deletedFor![myUserId.toString()] == true) {
                   return const SizedBox();
+                }
+
+                if (msg.type == 'image' && msg.imageUrl != null) {
+                  return GestureDetector(
+                    onLongPress: () => _showMessageOptions(msg),
+                    child: Align(
+                      alignment: isMe
+                          ? Alignment.centerRight
+                          : Alignment.centerLeft,
+                      child: Container(
+                        margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child:Hero(
+                            tag: msg.imageUrl!,
+                            child: Image.network(
+                              msg.imageUrl!,
+                              width: 200,
+                              height: 200,
+                              fit: BoxFit.cover,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
                 }
 
                 if (msg.type == 'text') {
@@ -837,6 +990,13 @@ class _ChatScreenState extends State<ChatScreen> {
               Expanded(
                 child: TextField(
                   controller: _controller,
+                  onChanged: (value) {
+                    _chatRef.child('typing/$myUserId').set(true);
+
+                    Future.delayed(const Duration(seconds: 1), () {
+                      _chatRef.child('typing/$myUserId').set(false);
+                    });
+                  },
                   style:
                   const TextStyle(color: Colors.white),
                   decoration: InputDecoration(
@@ -852,6 +1012,10 @@ class _ChatScreenState extends State<ChatScreen> {
                     ),
                   ),
                 ),
+              ),
+              IconButton(
+                icon: Icon(Icons.image, color: Color(0xFF00FF7F)),
+                onPressed: _sendImage,
               ),
               IconButton(
                 icon: const Icon(Icons.send,
